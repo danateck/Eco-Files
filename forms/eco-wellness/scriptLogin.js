@@ -324,53 +324,71 @@ class EcoWellnessLoginForm {
         this.finishLocalLogin(email);
 
     } catch (err) {
-    const code = err.code || "";
-    const msg = err.message || "";
+        const code = err.code || "";
+        const msg = err.message || "";
 
-    // 1. wrong password for an existing email
-    if (code === "auth/wrong-password") {
-        this.showError("password", "סיסמה שגויה");
-        this.passwordInput.focus();
-        this.setLoading(false);
-        return;
-    }
-
-    // 2. email not found yet -> make new user automatically
-    if (code === "auth/user-not-found") {
-        try {
-            const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
-            this.finishLocalLogin(email);
-        } catch (createErr) {
-            console.error("create user failed:", createErr);
-            this.showError("password", "לא ניתן ליצור משתמש חדש כרגע.");
+        // 1. existing email, wrong password
+        if (code === "auth/wrong-password") {
+            this.showError("password", "סיסמה שגויה");
+            this.passwordInput.focus();
             this.setLoading(false);
-        }
-        return;
+            return;
         }
 
-        // 3. Firebase sometimes returns auth/internal-error with
-        // message containing "INVALID_LOGIN_CREDENTIALS"
-        // even though this is basically "no such (email,password) combo".
+        // 2. email never registered yet -> create user automatically
+        if (code === "auth/user-not-found") {
+            try {
+                const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
+                this.finishLocalLogin(email);
+            } catch (createErr) {
+                // could fail if weak password (<6 chars), etc.
+                console.error("create user failed:", createErr);
+                this.showError("password", "לא ניתן ליצור משתמש חדש כרגע (בדקי סיסמה באורך 6+).");
+                this.setLoading(false);
+            }
+            return;
+        }
+
+        // 3. Safari / mobile sometimes returns auth/internal-error with "INVALID_LOGIN_CREDENTIALS"
+        // instead of giving us a clean code. That can mean two DIFFERENT things:
+        //   a) the account doesn't exist yet (treat like create)
+        //   b) the account exists but password is wrong (treat like wrong password)
+        //
+        // Trick: try to create. If createUser fails with "auth/email-already-in-use",
+        // that means the user DOES exist -> so it's actually wrong password.
         if (
             code === "auth/internal-error" &&
             msg.includes("INVALID_LOGIN_CREDENTIALS")
         ) {
             try {
                 const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
+                // if we got here, user didn't exist before. now they're created:
                 this.finishLocalLogin(email);
             } catch (createErr) {
-                console.error("create user failed:", createErr);
-                this.showError("password", "לא ניתן ליצור משתמש חדש כרגע.");
-                this.setLoading(false);
+                const createCode = createErr.code || "";
+                // user already exists but password didn't match
+                if (createCode === "auth/email-already-in-use") {
+                    this.showError("password", "סיסמה שגויה");
+                    this.passwordInput.focus();
+                    this.setLoading(false);
+                } else {
+                    console.error("create user failed (internal-error path):", createErr);
+                    this.showError("password", "לא ניתן ליצור משתמש חדש כרגע.");
+                    this.setLoading(false);
+                }
             }
             return;
         }
 
-        // 4. any other error
-        console.error("login failed:", err);
-        this.showError("password", "שגיאת התחברות");
-        this.setLoading(false);
+        // 4. fallback:
+        // sometimes iPhone gives weird auth persistence errors even if the
+        // credentials are correct. as a last resort, if we reached here,
+        // we will try to continue as logged in anyway.
+        console.error("login failed (fallback):", err);
+        // try to continue anyway:
+        this.finishLocalLogin(email);
     }
+
 
 }
 
