@@ -600,16 +600,14 @@
 
   <!-- שמירה/זיהוי משתמש -->
   <script>
-  // בשלב הזה אנחנו כבר יודעות שיש currentUser,
-  // כי בדקנו את זה ממש בתחילת <body> ועצרנו אם לא היה.
-
-  
-
-  // מציגים שם משתמש בסיידבר
+  // פה אנחנו כבר בתוך הדשבורד, אז currentUser כבר חייב להיות קיים.
+  // לא להכריז עליו שוב עם const כדי לא לקבל שגיאה כפולה.
   const label = document.getElementById("currentUserLabel");
   const mail = document.getElementById("currentUserEmail");
-  if (label) label.textContent = `שלום, ${currentUser}`;
-  if (mail) mail.textContent = currentUser;
+  const currentUserShown = localStorage.getItem("docArchiveCurrentUser");
+
+  if (label) label.textContent = `שלום, ${currentUserShown}`;
+  if (mail) mail.textContent = currentUserShown;
 
   // התנתקות
   const logoutBtn = document.getElementById("logoutBtn");
@@ -620,33 +618,31 @@
     });
   }
 
-  // כפתור העלאה פותח את בחירת הקובץ
+  // כפתור העלאה → פותח בחירת קובץ
   const uploadBtnEl = document.getElementById("uploadBtn");
   const fileInputEl = document.getElementById("fileInput");
   if (uploadBtnEl && fileInputEl) {
     uploadBtnEl.addEventListener("click", () => fileInputEl.click());
   }
 
-  // טאבים למיון (ויזואלי כרגע)
+  // טאבים
   const tabs = document.querySelectorAll(".tab-btn");
   tabs.forEach(tab => {
     tab.addEventListener("click", () => {
       tabs.forEach(t => t.classList.remove("active"));
       tab.classList.add("active");
-      // כאן בעתיד אפשר למיין לפי tab.dataset.sort
+      // בעתיד אפשר למיין לפי tab.dataset.sort
     });
   });
 
-  // סיידבר: מעבר בין מסכים (בית / אחסון משותף / סל מחזור)
+  // תפריט צד (סיידבר): בית / אחסון משותף / סל מחזור
   const menuItems = document.querySelectorAll(".menu-item");
 
   menuItems.forEach(btn => {
     btn.addEventListener("click", () => {
-      // עיצוב active
       menuItems.forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
 
-      // איזה מסך לפתוח
       const view = btn.dataset.view;
       if (view === "home") {
         window.App?.renderHome();
@@ -659,7 +655,7 @@
   });
 </script>
 
-  <!-- הקוד הלוגי שלך (טעינת מסמכים, מיון, העלאה, שמירה ל-localStorage וכו') -->
-  <script type="module" src="./JS/main.js"></script>
+<script type="module" src="./JS/main.js"></script>
+
 </body>
 </html>
