@@ -501,8 +501,11 @@
 <body>
   <script>
 
-      // מפנים ישר ללוגין לפני שהדפדפן בכלל מצייר את שאר התוכן
-      window.location.href = "./forms/eco-wellness/index.html";
+  const currentUser = localStorage.getItem("docArchiveCurrentUser");
+  if (!currentUser) {
+    window.location.href = "./forms/eco-wellness/index.html";
+  }
+
 
   </script>
   <div class="dashboard">
@@ -597,7 +600,6 @@
 
   <!-- שמירה/זיהוי משתמש -->
   <script>
-    const currentUser = localStorage.getItem("docArchiveCurrentUser");
   // פה אנחנו כבר בתוך הדשבורד, אז currentUser כבר חייב להיות קיים.
   // לא להכריז עליו שוב עם const כדי לא לקבל שגיאה כפולה.
   const label = document.getElementById("currentUserLabel");
