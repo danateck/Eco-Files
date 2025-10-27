@@ -217,7 +217,7 @@ class EcoWellnessLoginForm {
 
         // אחרי קצת זמן – נכנסות למערכת
         setTimeout(() => {
-            window.location.href = "/index.html";
+            window.location.href = "../../index.html";
         }, 2000);
     }
 
@@ -286,6 +286,9 @@ class EcoWellnessLoginForm {
 
                 // ונריץ את אותה אנימציית "ברוכה הבאה"
                 this.showHarmonySuccess();
+                        setTimeout(() => {
+        window.location.href = "../../index.html";
+        }, 2000);
             } catch (err) {
                 console.error("Google Sign-In Error:", err);
                 alert("שגיאה בהתחברות עם Google. נסי שוב.");
