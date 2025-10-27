@@ -1,6 +1,5 @@
 // scriptLogin.js
-// התחברות רגילה + גוגל + איפוס סיסמה
-// גרסה מתוקנת: אין יותר "יצירת משתמש אוטומטית" בזמן לוגין
+// לוגין שמתנהג גם כרישום אוטומטי אם אין משתמש
 
 const STORAGE_KEY = "docArchiveUsers";
 const CURRENT_USER_KEY = "docArchiveCurrentUser";
@@ -22,12 +21,12 @@ function setCurrentUser(username) {
     localStorage.setItem(CURRENT_USER_KEY, username);
 }
 
-// פונקציה לרישום משתמש חדש (תשתמשי בה בעתיד בדף הרשמה אמיתי)
+// זו כבר לא בשימוש ישיר כרגע אבל אני עדיין משאירה לך, זה שימושי אם תרצי בעתיד דף "הרשמה"
 function registerUser(email, password) {
     const allUsers = loadAllUsersDataFromStorage();
 
     if (allUsers[email]) {
-        // כבר קיים -> אסור לרשום שוב
+        // אם כבר קיים לא נרשום מחדש בסיסמה אחרת
         return { ok: false, msg: "המייל כבר רשום. התחברי עם הסיסמה שלו." };
     }
 
@@ -41,26 +40,36 @@ function registerUser(email, password) {
     return { ok: true, msg: "נרשמת והתחברת." };
 }
 
-// נסיון התחברות (ללא יצירה אוטומטית!)
+// התחברות שיכולה גם ליצור משתמש אם הוא לא קיים עדיין
 function loginUser(email, password) {
     const allUsers = loadAllUsersDataFromStorage();
     const existingUser = allUsers[email];
 
+    // --- מצב 1: אין בכלל משתמש כזה עדיין ---
     if (!existingUser) {
-        return { ok: false, code: "NOUSER", msg: "אין חשבון עם האימייל הזה. צריך להירשם קודם." };
+        // יוצרים משתמש חדש "מהאוויר" עם הסיסמה שהוזנה עכשיו
+        allUsers[email] = {
+            password: password,
+            docs: [] // אין לו עדיין קבצים
+        };
+        saveAllUsersDataToStorage(allUsers);
+
+        setCurrentUser(email);
+        return { ok: true, code: "NEW_USER_CREATED", msg: "נוצר משתמש חדש והתחברת" };
     }
 
-    // משתמש קיים אבל בלי סיסמה (חשבון שנוצר דרך גוגל)
+    // --- מצב 2: יש משתמש קיים אבל הוא נוצר דרך גוגל (בלי סיסמה לוקאלית) ---
     if (!existingUser.password) {
-        return { ok: false, code: "GOOGLE_ONLY", msg: "החשבון הזה מוגן דרך Google בלבד. התחברי עם Google." };
+        // אם אין password שמור אצלו, זה חשבון Google בלבד
+        return { ok: false, code: "GOOGLE_ONLY", msg: "החשבון הזה נכנס רק עם Google." };
     }
 
-    // יש סיסמה, אבל לא תואם
+    // --- מצב 3: יש משתמש קיים עם סיסמה ואנחנו בודקות התאמה ---
     if (existingUser.password !== password) {
         return { ok: false, code: "BADPASS", msg: "סיסמה שגויה" };
     }
 
-    // הצלחה
+    // --- מצב 4: סיסמה טובה ---
     setCurrentUser(email);
     return { ok: true, code: "OK", msg: "מחוברת" };
 }
@@ -77,7 +86,7 @@ class EcoWellnessLoginForm {
         this.socialButtons = document.querySelectorAll('.earth-social');
         this.forgotLink = document.querySelector(".healing-link");
 
-        // Firebase (יוגדר דינמית כשעושים גוגל)
+        // Firebase (לגוגל)
         this.auth = null;
         this.googleProvider = null;
         this._signInWithPopup = null;
@@ -94,16 +103,16 @@ class EcoWellnessLoginForm {
     }
 
     bindEvents() {
-        // שליחת טופס התחברות
+        // כשלוחצים התחברות
         this.form.addEventListener('submit', (e) => this.handleSubmit(e));
 
-        // ולידציות בסיס
+        // ולידציה בסיסית
         this.emailInput.addEventListener('blur', () => this.validateEmail());
         this.passwordInput.addEventListener('blur', () => this.validatePassword());
         this.emailInput.addEventListener('input', () => this.clearError('email'));
         this.passwordInput.addEventListener('input', () => this.clearError('password'));
 
-        // בשביל ה-labels הצפים
+        // כדי שהלייבלים לא יתנגשו
         this.emailInput.setAttribute('placeholder', ' ');
         this.passwordInput.setAttribute('placeholder', ' ');
     }
@@ -139,17 +148,19 @@ class EcoWellnessLoginForm {
         const userData = allUsers[email];
 
         if (!userData) {
-            alert("לא נמצא חשבון עם האימייל הזה. אפשר פשוט להירשם עם סיסמה חדשה.");
+            // עכשיו בגלל שאנחנו מרשות יצירה אוטומטית בלוגין,
+            // זה מצב די מוזר אבל עדיין נטפל בו יפה:
+            alert("אין חשבון עם האימייל הזה עדיין. תתחברי פעם ראשונה וזה ייצור חשבון.");
             return;
         }
 
-        // חשבון שנוצר רק דרך גוגל ואין לו password מקומי
+        // חשבון של גוגל בלבד (אין סיסמה מקומית לשנות)
         if (!userData.password) {
-            alert("החשבון הזה נכנס רק עם Google. תתחברי עם Google או תצרי חשבון ידני חדש.");
+            alert("החשבון הזה נכנס רק עם Google.");
             return;
         }
 
-        // יש משתמש מקומי → לאפשר איפוס סיסמה ידנית
+        // איפוס סיסמה רגיל לחלון modal
         localStorage.setItem("pendingResetUser", email);
         this.openResetModal();
     }
@@ -199,7 +210,7 @@ class EcoWellnessLoginForm {
             localStorage.removeItem("pendingResetUser");
             modal.classList.add("hidden");
 
-            alert("הסיסמה עודכנה בהצלחה. עכשיו אפשר להתחבר עם הסיסמה החדשה.");
+            alert("הסיסמה עודכנה. עכשיו אפשר להתחבר עם הסיסמה החדשה.");
         };
     }
 
@@ -268,7 +279,6 @@ class EcoWellnessLoginForm {
             errorElement.textContent = message;
             errorElement.classList.add('show');
         } else {
-            // fallback (למקרה של מייל לא קיים וכד')
             alert(message);
         }
     }
@@ -294,7 +304,6 @@ class EcoWellnessLoginForm {
         });
     }
 
-    // 🔒 התחברות (LOGIN) בלבד. לא נרשמים אוטומטית.
     async handleSubmit(e) {
         e.preventDefault();
 
@@ -305,7 +314,7 @@ class EcoWellnessLoginForm {
         this.setLoading(true);
 
         try {
-            // "חוויית עומס" קלה אנימטיבית
+            // אנימציה קטנה
             await new Promise(res => setTimeout(res, 300));
 
             const email = this.emailInput.value.trim();
@@ -314,10 +323,8 @@ class EcoWellnessLoginForm {
             const result = loginUser(email, password);
 
             if (!result.ok) {
-                // משתמש לא קיים בכלל
-                if (result.code === "NOUSER") {
-                    this.showError("email", "אין חשבון עם האימייל הזה. צרי חשבון חדש (הרשמה).");
-                } else if (result.code === "GOOGLE_ONLY") {
+                // המצב היחיד שעדיין חוסם אותך הוא חשבון גוגל-בלבד
+                if (result.code === "GOOGLE_ONLY") {
                     this.showError("email", "החשבון הזה נכנס רק עם Google.");
                 } else if (result.code === "BADPASS") {
                     this.showError("password", "סיסמה שגויה");
@@ -330,10 +337,9 @@ class EcoWellnessLoginForm {
                 return;
             }
 
-            // אם הגענו לפה - התחברות הצליחה
+            // הצלחה (או משתמש חדש שנוצר עכשיו או משתמש קיים)
             this.showHarmonySuccess();
 
-            // מעבר לדשבורד שלך
             setTimeout(() => {
                 window.location.href = "../../index.html";
             }, 1500);
@@ -346,24 +352,23 @@ class EcoWellnessLoginForm {
     }
 
     showHarmonySuccess() {
-        // אנימציית "Welcome Home"
+        // מיני-אנימציה
         this.form.style.transform = 'scale(0.95)';
         this.form.style.opacity = '0';
 
         setTimeout(() => {
             this.form.style.display = 'none';
-            document.querySelectorAll('.natural-social, .nurture-signup, .balance-divider')
-                .forEach(el => el?.classList.add('hidden'));
+            document
+              .querySelectorAll('.natural-social, .nurture-signup, .balance-divider')
+              .forEach(el => el?.classList.add('hidden'));
+
             this.successMessage.classList.add('show');
         }, 300);
     }
 
-    // ----------------------------------------
-    // התחברות עם גוגל דרך Firebase Auth
-    // ----------------------------------------
+    /* ---------------- Google Login ---------------- */
 
     initFirebaseAuth() {
-        // נטען Firebase דינמי
         return Promise.all([
             import("https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js"),
             import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js")
@@ -403,11 +408,11 @@ class EcoWellnessLoginForm {
                 const result = await this._signInWithPopup(this.auth, this.googleProvider);
                 const user = result.user;
 
-                // נשמור את המשתמש בגזרתנו אם לא קיים
+                // לשמור/לעדכן את המשתמש אצלנו
                 const allUsers = loadAllUsersDataFromStorage();
                 if (!allUsers[user.email]) {
                     allUsers[user.email] = {
-                        password: "", // אין סיסמה מקומית
+                        password: "", // אין סיסמה מקומית לחשבון גוגל
                         docs: []
                     };
                     saveAllUsersDataToStorage(allUsers);
@@ -430,7 +435,7 @@ class EcoWellnessLoginForm {
     }
 }
 
-// אנימציית נשימה אם לא קיימת כבר
+// אנימציה נשימה לשדות
 if (!document.querySelector('#wellness-keyframes')) {
     const style = document.createElement('style');
     style.id = 'wellness-keyframes';
@@ -443,7 +448,7 @@ if (!document.querySelector('#wellness-keyframes')) {
     document.head.appendChild(style);
 }
 
-// אתחול הטופס כשעמוד הלוגין נטען
+// הפעלה
 document.addEventListener('DOMContentLoaded', () => {
     new EcoWellnessLoginForm();
 });
