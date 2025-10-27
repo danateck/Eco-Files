@@ -131,6 +131,85 @@ body {
     animation: zenBreath 4s ease-in-out infinite;
 }
 
+
+.reset-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: grid;
+  place-items: center;
+  z-index: 9999;
+  font-family: inherit;
+  direction: rtl;
+}
+
+.reset-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  width: min(90%, 320px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  text-align: right;
+  color: #1e3b3b;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+.reset-title {
+  margin: 0 0 .5rem;
+  font-size: .95rem;
+  font-weight: 600;
+  color: #1e3b3b;
+}
+
+.reset-desc {
+  margin: 0 0 1rem;
+  font-size: .8rem;
+  color: #4b6a60;
+  line-height: 1.4;
+}
+
+.reset-input {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #a8c5bc;
+  padding: .6rem .7rem;
+  font-size: .8rem;
+  margin-bottom: 1rem;
+  outline: none;
+}
+.reset-input:focus {
+  border-color: #4b6a60;
+  box-shadow: 0 0 0 3px rgba(76,136,119,0.18);
+}
+
+.reset-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+}
+
+.reset-btn {
+  border-radius: 8px;
+  border: 0;
+  font-size: .8rem;
+  font-weight: 600;
+  padding: .5rem .75rem;
+  cursor: pointer;
+}
+.reset-btn.cancel {
+  background: #eee;
+  color: #333;
+}
+.reset-btn.save {
+  background: linear-gradient(to right,#3a7f5d,#5dbb8d);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.25);
+}
+
+.hidden {
+  display: none !important;
+}
+
 @keyframes zenBreath {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.05); }

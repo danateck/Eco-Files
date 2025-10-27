@@ -94,7 +94,7 @@ function saveAllUsersDataToStorage(allUsersData) {
 }
 
 function getCurrentUser() {
-    return localStorage.getItem(CURRENT_USER_KEY) || null;
+    return localStorage.getItem(CURRENT_USER_KEY) ;
 }
 
 function setCurrentUser(username) {
@@ -102,14 +102,18 @@ function setCurrentUser(username) {
 }
 
 function getUserDocs(username, allUsersData) {
-    return allUsersData[username] || [];
+    // אם אין משתמש כזה או שאין לו docs, נחזיר []
+    return allUsersData[username]?.docs || [];
 }
 
 function setUserDocs(username, docsArray, allUsersData) {
-    allUsersData[username] = docsArray;
+    if (!allUsersData[username]) {
+        // אם המשתמש לא קיים עדיין, ניצור לו מבנה בסיסי
+        allUsersData[username] = { password: "", docs: [] };
+    }
+    allUsersData[username].docs = docsArray;
     saveAllUsersDataToStorage(allUsersData);
 }
-
 /* -------------------------------------------------
    4. עזר לזיהוי קטגוריה
    ------------------------------------------------- */
