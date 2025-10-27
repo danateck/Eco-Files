@@ -317,17 +317,17 @@ class EcoWellnessLoginForm {
     const password = this.passwordInput.value.trim();
 
     try {
-        // 1) try sign in
+        // 1) נסה להתחבר למשתמש קיים
         const userCred = await window.auth.signInWithEmailAndPassword(email, password);
 
-        // if success: finish login (save current user etc)
+        // הצלחה -> תמשיכי פנימה
         this.finishLocalLogin(email);
 
     } catch (err) {
         const code = err.code || "";
 
         if (code === "auth/wrong-password") {
-            // email exists but password is wrong
+            // מייל כן קיים אבל סיסמה לא נכונה
             this.showError("password", "סיסמה שגויה");
             this.passwordInput.focus();
             this.setLoading(false);
@@ -335,7 +335,7 @@ class EcoWellnessLoginForm {
         }
 
         if (code === "auth/user-not-found") {
-            // first time ever → create account, then log them in
+            // אין משתמש כזה עדיין -> תצרי אותו ואז תכניסי אוטומטית
             try {
                 const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
 
@@ -349,6 +349,7 @@ class EcoWellnessLoginForm {
             return;
         }
 
+        // אם זה לא wrong-password ולא user-not-found
         console.error("login failed:", err);
         this.showError("password", "שגיאת התחברות");
         this.setLoading(false);
@@ -356,32 +357,34 @@ class EcoWellnessLoginForm {
 }
 
 
+
 finishLocalLogin(email) {
-    // 1. save who is logged in so dashboard loads the right docs later
+    // 1. שמירה מי מחובר עכשיו כדי שהדשבורד ידע
     localStorage.setItem("docArchiveCurrentUser", email);
 
-    // 2. make sure the user exists in docArchiveUsers map
+    // 2. ודא שלמשתמש יש רשומה ב-localStorage למסמכים
     const STORAGE_KEY = "docArchiveUsers";
     const raw = localStorage.getItem(STORAGE_KEY);
     const allUsers = raw ? JSON.parse(raw) : {};
 
     if (!allUsers[email]) {
         allUsers[email] = {
-            password: "", // we don't keep real password here anymore
-            docs: []      // start empty, dashboard may fill with defaults
+            password: "", // סיסמה אמיתית יושבת בפיירבייס, לא שומרים פה
+            docs: []
         };
     }
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(allUsers));
 
-    // 3. show little success animation
+    // 3. אנימציה יפה של הצלחה
     this.showHarmonySuccess();
 
-    // 4. go to dashboard
+    // 4. מעבר לדשבורד (index.html הראשי שלך)
     setTimeout(() => {
         window.location.href = "../../index.html";
     }, 1500);
 }
+
 
 
 
