@@ -1,9 +1,6 @@
 // scriptLogin.js
-// גרסה: התחברות רגילה + גוגל + שמירת משתמש + ניתוב
-
-// -----------------------------
-// חלק 1: ניהול משתמשים מקומיים
-// -----------------------------
+// התחברות רגילה + גוגל + איפוס סיסמה
+// גרסה מתוקנת: אין יותר "יצירת משתמש אוטומטית" בזמן לוגין
 
 const STORAGE_KEY = "docArchiveUsers";
 const CURRENT_USER_KEY = "docArchiveCurrentUser";
@@ -25,9 +22,48 @@ function setCurrentUser(username) {
     localStorage.setItem(CURRENT_USER_KEY, username);
 }
 
-// -----------------------------
-// חלק 2: לוגיקה של טופס ה-ECO WELLNESS
-// -----------------------------
+// פונקציה לרישום משתמש חדש (תשתמשי בה בעתיד בדף הרשמה אמיתי)
+function registerUser(email, password) {
+    const allUsers = loadAllUsersDataFromStorage();
+
+    if (allUsers[email]) {
+        // כבר קיים -> אסור לרשום שוב
+        return { ok: false, msg: "המייל כבר רשום. התחברי עם הסיסמה שלו." };
+    }
+
+    allUsers[email] = {
+        password: password,
+        docs: [] // משתמש חדש מתחיל בלי מסמכים
+    };
+    saveAllUsersDataToStorage(allUsers);
+    setCurrentUser(email);
+
+    return { ok: true, msg: "נרשמת והתחברת." };
+}
+
+// נסיון התחברות (ללא יצירה אוטומטית!)
+function loginUser(email, password) {
+    const allUsers = loadAllUsersDataFromStorage();
+    const existingUser = allUsers[email];
+
+    if (!existingUser) {
+        return { ok: false, code: "NOUSER", msg: "אין חשבון עם האימייל הזה. צריך להירשם קודם." };
+    }
+
+    // משתמש קיים אבל בלי סיסמה (חשבון שנוצר דרך גוגל)
+    if (!existingUser.password) {
+        return { ok: false, code: "GOOGLE_ONLY", msg: "החשבון הזה מוגן דרך Google בלבד. התחברי עם Google." };
+    }
+
+    // יש סיסמה, אבל לא תואם
+    if (existingUser.password !== password) {
+        return { ok: false, code: "BADPASS", msg: "סיסמה שגויה" };
+    }
+
+    // הצלחה
+    setCurrentUser(email);
+    return { ok: true, code: "OK", msg: "מחוברת" };
+}
 
 class EcoWellnessLoginForm {
     constructor() {
@@ -39,12 +75,12 @@ class EcoWellnessLoginForm {
         this.submitButton = this.form.querySelector('.harmony-button');
         this.successMessage = document.getElementById('successMessage');
         this.socialButtons = document.querySelectorAll('.earth-social');
-
         this.forgotLink = document.querySelector(".healing-link");
 
-        // Firebase auth objects נאתחל בהמשך
+        // Firebase (יוגדר דינמית כשעושים גוגל)
         this.auth = null;
         this.googleProvider = null;
+        this._signInWithPopup = null;
 
         this.init();
     }
@@ -55,20 +91,19 @@ class EcoWellnessLoginForm {
         this.setupWellnessEffects();
         this.setupGoogleButton();
         this.setupForgotPassword();
-
     }
 
     bindEvents() {
-        // שליחת טופס רגילה (אימייל+סיסמה)
+        // שליחת טופס התחברות
         this.form.addEventListener('submit', (e) => this.handleSubmit(e));
 
-        // ולידציות
+        // ולידציות בסיס
         this.emailInput.addEventListener('blur', () => this.validateEmail());
         this.passwordInput.addEventListener('blur', () => this.validatePassword());
         this.emailInput.addEventListener('input', () => this.clearError('email'));
         this.passwordInput.addEventListener('input', () => this.clearError('password'));
 
-        // נוודא שאין placeholder ויזואלי שמקלקל את העיצוב הצף
+        // בשביל ה-labels הצפים
         this.emailInput.setAttribute('placeholder', ' ');
         this.passwordInput.setAttribute('placeholder', ' ');
     }
@@ -91,96 +126,84 @@ class EcoWellnessLoginForm {
         });
     }
 
-
     handleForgotPassword() {
-    const email = this.emailInput.value.trim();
-    const allUsers = loadAllUsersDataFromStorage();
-
-    if (!email) {
-        alert("כדי לאפס סיסמה, הזיני קודם את כתובת האימייל שלך.");
-        this.emailInput.focus();
-        return;
-    }
-
-    const userData = allUsers[email];
-
-    if (!userData) {
-        alert("לא נמצא חשבון עם האימייל הזה. אפשר פשוט להירשם עם סיסמה חדשה.");
-        return;
-    }
-
-    // חשבון שנוצר דרך גוגל בלבד (בלי סיסמה)
-    if (!userData.password) {
-        alert("החשבון הזה מוגן עם Google Sign-In. התחברי עם Google או צרי חשבון ידני חדש עם סיסמה.");
-        return;
-    }
-
-    // יש משתמש, ויש לו סיסמה => נאפשר איפוס סיסמה
-    // 1. נשמור מי מבקש איפוס כרגע
-    localStorage.setItem("pendingResetUser", email);
-
-    // 2. נפתח את המודאל לאיפוס
-    this.openResetModal();
-}
-
-openResetModal() {
-    const modal = document.getElementById("resetModal");
-    const newPassInput = document.getElementById("newPasswordInput");
-    const cancelBtn = document.getElementById("resetCancelBtn");
-    const saveBtn = document.getElementById("resetSaveBtn");
-
-    if (!modal) {
-        alert("שגיאה: חלון איפוס לא זמין.");
-        return;
-    }
-
-    modal.classList.remove("hidden");
-    newPassInput.value = "";
-    newPassInput.focus();
-
-    cancelBtn.onclick = () => {
-        modal.classList.add("hidden");
-        localStorage.removeItem("pendingResetUser");
-    };
-
-    saveBtn.onclick = () => {
-        const newPass = newPassInput.value.trim();
-        if (!newPass || newPass.length < 3) {
-            alert("הסיסמה החדשה חייבת להיות לפחות באורך 3 תווים.");
-            return;
-        }
-
-        const emailToReset = localStorage.getItem("pendingResetUser");
-        if (!emailToReset) {
-            alert("שגיאה פנימית: לא ידוע איזה משתמש לאפס.");
-            return;
-        }
-
-        // עדכון הסיסמה בפועל
+        const email = this.emailInput.value.trim();
         const allUsers = loadAllUsersDataFromStorage();
-        if (!allUsers[emailToReset]) {
-            alert("שגיאה: המשתמש כבר לא קיים.");
+
+        if (!email) {
+            alert("כדי לאפס סיסמה, הזיני קודם את כתובת האימייל שלך.");
+            this.emailInput.focus();
             return;
         }
 
-        allUsers[emailToReset].password = newPass;
-        saveAllUsersDataToStorage(allUsers);
+        const userData = allUsers[email];
 
-        // מנקים מצב איפוס
-        localStorage.removeItem("pendingResetUser");
+        if (!userData) {
+            alert("לא נמצא חשבון עם האימייל הזה. אפשר פשוט להירשם עם סיסמה חדשה.");
+            return;
+        }
 
-        // סוגרים מודאל
-        modal.classList.add("hidden");
+        // חשבון שנוצר רק דרך גוגל ואין לו password מקומי
+        if (!userData.password) {
+            alert("החשבון הזה נכנס רק עם Google. תתחברי עם Google או תצרי חשבון ידני חדש.");
+            return;
+        }
 
-        alert("הסיסמה עודכנה בהצלחה. עכשיו אפשר להתחבר עם הסיסמה החדשה.");
-    };
-}
+        // יש משתמש מקומי → לאפשר איפוס סיסמה ידנית
+        localStorage.setItem("pendingResetUser", email);
+        this.openResetModal();
+    }
 
+    openResetModal() {
+        const modal = document.getElementById("resetModal");
+        const newPassInput = document.getElementById("newPasswordInput");
+        const cancelBtn = document.getElementById("resetCancelBtn");
+        const saveBtn = document.getElementById("resetSaveBtn");
 
+        if (!modal) {
+            alert("שגיאה: חלון איפוס לא זמין.");
+            return;
+        }
 
+        modal.classList.remove("hidden");
+        newPassInput.value = "";
+        newPassInput.focus();
+
+        cancelBtn.onclick = () => {
+            modal.classList.add("hidden");
+            localStorage.removeItem("pendingResetUser");
+        };
+
+        saveBtn.onclick = () => {
+            const newPass = newPassInput.value.trim();
+            if (!newPass || newPass.length < 3) {
+                alert("הסיסמה החדשה חייבת להיות לפחות באורך 3 תווים.");
+                return;
+            }
+
+            const emailToReset = localStorage.getItem("pendingResetUser");
+            if (!emailToReset) {
+                alert("שגיאה פנימית: לא ידוע איזה משתמש לאפס.");
+                return;
+            }
+
+            const allUsers = loadAllUsersDataFromStorage();
+            if (!allUsers[emailToReset]) {
+                alert("שגיאה: המשתמש כבר לא קיים.");
+                return;
+            }
+
+            allUsers[emailToReset].password = newPass;
+            saveAllUsersDataToStorage(allUsers);
+
+            localStorage.removeItem("pendingResetUser");
+            modal.classList.add("hidden");
+
+            alert("הסיסמה עודכנה בהצלחה. עכשיו אפשר להתחבר עם הסיסמה החדשה.");
+        };
+    }
 
     setupWellnessEffects() {
-        // אפקט נשימה עדין על שדות
         [this.emailInput, this.passwordInput].forEach(input => {
             input.addEventListener('focus', (e) => {
                 this.triggerMindfulEffect(e.target.closest('.organic-field'));
@@ -244,6 +267,9 @@ openResetModal() {
             organicField.classList.add('error');
             errorElement.textContent = message;
             errorElement.classList.add('show');
+        } else {
+            // fallback (למקרה של מייל לא קיים וכד')
+            alert(message);
         }
     }
 
@@ -268,63 +294,59 @@ openResetModal() {
         });
     }
 
-    // 🟢 התחברות רגילה (אימייל+סיסמה בלי גוגל)
+    // 🔒 התחברות (LOGIN) בלבד. לא נרשמים אוטומטית.
     async handleSubmit(e) {
-  e.preventDefault();
+        e.preventDefault();
 
-  const okEmail = this.validateEmail();
-  const okPass = this.validatePassword();
-  if (!okEmail || !okPass) return;
+        const okEmail = this.validateEmail();
+        const okPass = this.validatePassword();
+        if (!okEmail || !okPass) return;
 
-  this.setLoading(true);
+        this.setLoading(true);
 
-  try {
-    await new Promise(res => setTimeout(res, 400));
+        try {
+            // "חוויית עומס" קלה אנימטיבית
+            await new Promise(res => setTimeout(res, 300));
 
-    const email = this.emailInput.value.trim();
-    const password = this.passwordInput.value.trim();
+            const email = this.emailInput.value.trim();
+            const password = this.passwordInput.value.trim();
 
-    const allUsers = loadAllUsersDataFromStorage();
-    const existingUser = allUsers[email];
+            const result = loginUser(email, password);
 
-    if (!existingUser) {
-      // יוזר חדש לגמרי – ניצור עם הסיסמה
-      allUsers[email] = {
-        password: password,
-        docs: []
-      };
-      saveAllUsersDataToStorage(allUsers);
-      setCurrentUser(email);
-      this.showHarmonySuccess();
-      setTimeout(() => {
-        window.location.href = "../../index.html";
-      }, 1500);
-    } else {
-      // יוזר קיים – נבדוק סיסמה
-      if (existingUser.password === password) {
-        setCurrentUser(email);
-        this.showHarmonySuccess();
-        setTimeout(() => {
-          window.location.href = "../../index.html";
-        }, 1500);
-      } else {
-        this.showError("password", "סיסמה שגויה");
-        this.passwordInput.focus();
-        this.setLoading(false);
-        return;
-      }
+            if (!result.ok) {
+                // משתמש לא קיים בכלל
+                if (result.code === "NOUSER") {
+                    this.showError("email", "אין חשבון עם האימייל הזה. צרי חשבון חדש (הרשמה).");
+                } else if (result.code === "GOOGLE_ONLY") {
+                    this.showError("email", "החשבון הזה נכנס רק עם Google.");
+                } else if (result.code === "BADPASS") {
+                    this.showError("password", "סיסמה שגויה");
+                    this.passwordInput.focus();
+                } else {
+                    this.showError("password", "שגיאת התחברות");
+                }
+
+                this.setLoading(false);
+                return;
+            }
+
+            // אם הגענו לפה - התחברות הצליחה
+            this.showHarmonySuccess();
+
+            // מעבר לדשבורד שלך
+            setTimeout(() => {
+                window.location.href = "../../index.html";
+            }, 1500);
+
+        } catch (err) {
+            console.error(err);
+            this.showError("password", "אירעה שגיאה, נסי שוב");
+            this.setLoading(false);
+        }
     }
-  } catch (err) {
-    console.error(err);
-    this.showError("password", "אירעה שגיאה, נסי שוב");
-    this.setLoading(false);
-  }
-}
-
-
 
     showHarmonySuccess() {
-        // מסתירות את הטופס, מציגות מסך "Welcome Home"
+        // אנימציית "Welcome Home"
         this.form.style.transform = 'scale(0.95)';
         this.form.style.opacity = '0';
 
@@ -334,31 +356,21 @@ openResetModal() {
                 .forEach(el => el?.classList.add('hidden'));
             this.successMessage.classList.add('show');
         }, 300);
-
-        // אחרי קצת זמן – נכנסות למערכת
-        setTimeout(() => {
-            window.location.href = "../../index.html";
-        }, 2000);
     }
 
     // ----------------------------------------
-    // חלק 3: התחברות עם גוגל דרך Firebase Auth
+    // התחברות עם גוגל דרך Firebase Auth
     // ----------------------------------------
 
     initFirebaseAuth() {
-        // נטען Firebase (שימי לב: חייב לרוץ בשרת מקומי/Live Server, לא file://)
-
-        // נייבא דינמית מה-CDN הרשמי (גרסה תואמת)
-        // שימי לב: לא לשנות את ה-url בלי סיבה
+        // נטען Firebase דינמי
         return Promise.all([
             import("https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js"),
             import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js")
         ]).then(([appModule, authModule]) => {
-
             const { initializeApp } = appModule;
             const { getAuth, GoogleAuthProvider, signInWithPopup } = authModule;
 
-            // זה הקונפיג שלך מפיירבייס 👇
             const firebaseConfig = {
                 apiKey: "AIzaSyBPr4X2_8JYCgXzMlTcVB0EJLhup9CdyYw",
                 authDomain: "login-page-echo-file.firebaseapp.com",
@@ -377,13 +389,10 @@ openResetModal() {
     }
 
     setupGoogleButton() {
-        // נניח שהכפתור של גוגל הוא הראשון עם הקלאס הזה:
         const googleBtn = document.querySelector(".earth-social");
-
         if (!googleBtn) return;
 
         googleBtn.addEventListener("click", async () => {
-            // אם עדיין לא אתחלנו פיירבייס → נאתחל עכשיו
             if (!this.auth) {
                 await this.initFirebaseAuth();
             }
@@ -391,24 +400,26 @@ openResetModal() {
             try {
                 this.setLoading(true);
 
-                // פותח חלון התחברות גוגל
                 const result = await this._signInWithPopup(this.auth, this.googleProvider);
                 const user = result.user;
 
-                // שומרים את האימייל ב-localStorage כדי שהמערכת הראשית תדע מי מחובר
+                // נשמור את המשתמש בגזרתנו אם לא קיים
                 const allUsers = loadAllUsersDataFromStorage();
                 if (!allUsers[user.email]) {
-                    allUsers[user.email] = [];
+                    allUsers[user.email] = {
+                        password: "", // אין סיסמה מקומית
+                        docs: []
+                    };
                     saveAllUsersDataToStorage(allUsers);
                 }
 
                 setCurrentUser(user.email);
 
-                // ונריץ את אותה אנימציית "ברוכה הבאה"
                 this.showHarmonySuccess();
-                        setTimeout(() => {
-        window.location.href = "../../index.html";
-        }, 2000);
+                setTimeout(() => {
+                    window.location.href = "../../index.html";
+                }, 1500);
+
             } catch (err) {
                 console.error("Google Sign-In Error:", err);
                 alert("שגיאה בהתחברות עם Google. נסי שוב.");
@@ -419,7 +430,7 @@ openResetModal() {
     }
 }
 
-// אנימציית נשימה רכה (אם לא קיים כבר)
+// אנימציית נשימה אם לא קיימת כבר
 if (!document.querySelector('#wellness-keyframes')) {
     const style = document.createElement('style');
     style.id = 'wellness-keyframes';
