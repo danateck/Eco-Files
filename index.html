@@ -499,6 +499,15 @@
 </head>
 
 <body>
+  <script>
+    // בדיקה מוקדמת - אם אין משתמש מחובר, אל תציגי בכלל את הדשבורד
+    const currentUser = localStorage.getItem("docArchiveCurrentUser");
+
+    if (!currentUser) {
+      // מפנים ישר ללוגין לפני שהדפדפן בכלל מצייר את שאר התוכן
+      window.location.href = "./forms/eco-wellness/index.html";
+    }
+  </script>
   <div class="dashboard">
 
     <!-- ===== SIDEBAR ===== -->
@@ -591,66 +600,64 @@
 
   <!-- שמירה/זיהוי משתמש -->
   <script>
-    const currentUser = localStorage.getItem("docArchiveCurrentUser");
-    if (!currentUser) {
-      // אם אין משתמש מחובר - חזרה למסך הלוגין
-      window.location.href = "./forms/eco-wellness/index.html";
-    } else {
-      // מציגים את המשתמש בסיידבר
-      const label = document.getElementById("currentUserLabel");
-      const mail = document.getElementById("currentUserEmail");
-      if (label) label.textContent = `שלום, ${currentUser}`;
-      if (mail) mail.textContent = currentUser;
-    }
+  // בשלב הזה אנחנו כבר יודעות שיש currentUser,
+  // כי בדקנו את זה ממש בתחילת <body> ועצרנו אם לא היה.
 
-    // התנתקות
-    const logoutBtn = document.getElementById("logoutBtn");
-    logoutBtn?.addEventListener("click", () => {
+  
+
+  // מציגים שם משתמש בסיידבר
+  const label = document.getElementById("currentUserLabel");
+  const mail = document.getElementById("currentUserEmail");
+  if (label) label.textContent = `שלום, ${currentUser}`;
+  if (mail) mail.textContent = currentUser;
+
+  // התנתקות
+  const logoutBtn = document.getElementById("logoutBtn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", () => {
       localStorage.removeItem("docArchiveCurrentUser");
       window.location.href = "./forms/eco-wellness/index.html";
     });
+  }
 
-    // כפתור העלאה פותח את בחירת הקובץ
-    const uploadBtnEl = document.getElementById("uploadBtn");
-    const fileInputEl = document.getElementById("fileInput");
-    if (uploadBtnEl && fileInputEl) {
-      uploadBtnEl.addEventListener("click", () => fileInputEl.click());
-    }
+  // כפתור העלאה פותח את בחירת הקובץ
+  const uploadBtnEl = document.getElementById("uploadBtn");
+  const fileInputEl = document.getElementById("fileInput");
+  if (uploadBtnEl && fileInputEl) {
+    uploadBtnEl.addEventListener("click", () => fileInputEl.click());
+  }
 
-    // אפשרות עתידית: טאבים למיון (חזותי בלבד כרגע)
-    const tabs = document.querySelectorAll(".tab-btn");
-    tabs.forEach(tab => {
-      tab.addEventListener("click", () => {
-        tabs.forEach(t => t.classList.remove("active"));
-        tab.classList.add("active");
-        // כאן תוכלי בעתיד להפעיל סידור מחדש לפי tab.dataset.sort
-      });
+  // טאבים למיון (ויזואלי כרגע)
+  const tabs = document.querySelectorAll(".tab-btn");
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      tabs.forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      // כאן בעתיד אפשר למיין לפי tab.dataset.sort
     });
+  });
 
-    // סיידבר: בחירת קטגוריה (לדפדוף בין נופים)
-    const menuItems = document.querySelectorAll(".menu-item");
-    const homeView = document.getElementById("homeView");
-    const categoryView = document.getElementById("categoryView");
-    const categoryTitle = document.getElementById("categoryTitle");
+  // סיידבר: מעבר בין מסכים (בית / אחסון משותף / סל מחזור)
+  const menuItems = document.querySelectorAll(".menu-item");
 
-    menuItems.forEach(btn => {
-      btn.addEventListener("click", () => {
-        menuItems.forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
+  menuItems.forEach(btn => {
+    btn.addEventListener("click", () => {
+      // עיצוב active
+      menuItems.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
 
-        const cat = btn.dataset.category;
-
-        const view = btn.dataset.view;
-        if (view === "home") {
-            window.App?.renderHome();
-        } else if (view === "shared") {
-            window.App?.openSharedView();
-        } else if (view === "recycle") {
-            window.App?.openRecycleView();
-        }
-      });
+      // איזה מסך לפתוח
+      const view = btn.dataset.view;
+      if (view === "home") {
+        window.App?.renderHome();
+      } else if (view === "shared") {
+        window.App?.openSharedView();
+      } else if (view === "recycle") {
+        window.App?.openRecycleView();
+      }
     });
-  </script>
+  });
+</script>
 
   <!-- הקוד הלוגי שלך (טעינת מסמכים, מיון, העלאה, שמירה ל-localStorage וכו') -->
   <script type="module" src="./JS/main.js"></script>
