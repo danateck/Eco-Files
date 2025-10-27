@@ -324,23 +324,40 @@ class EcoWellnessLoginForm {
         this.finishLocalLogin(email);
 
     } catch (err) {
-        const code = err.code || "";
+    const code = err.code || "";
+    const msg = err.message || "";
 
-        if (code === "auth/wrong-password") {
-            // מייל כן קיים אבל סיסמה לא נכונה
-            this.showError("password", "סיסמה שגויה");
-            this.passwordInput.focus();
+    // 1. wrong password for an existing email
+    if (code === "auth/wrong-password") {
+        this.showError("password", "סיסמה שגויה");
+        this.passwordInput.focus();
+        this.setLoading(false);
+        return;
+    }
+
+    // 2. email not found yet -> make new user automatically
+    if (code === "auth/user-not-found") {
+        try {
+            const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
+            this.finishLocalLogin(email);
+        } catch (createErr) {
+            console.error("create user failed:", createErr);
+            this.showError("password", "לא ניתן ליצור משתמש חדש כרגע.");
             this.setLoading(false);
-            return;
+        }
+        return;
         }
 
-        if (code === "auth/user-not-found") {
-            // אין משתמש כזה עדיין -> תצרי אותו ואז תכניסי אוטומטית
+        // 3. Firebase sometimes returns auth/internal-error with
+        // message containing "INVALID_LOGIN_CREDENTIALS"
+        // even though this is basically "no such (email,password) combo".
+        if (
+            code === "auth/internal-error" &&
+            msg.includes("INVALID_LOGIN_CREDENTIALS")
+        ) {
             try {
                 const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
-
                 this.finishLocalLogin(email);
-
             } catch (createErr) {
                 console.error("create user failed:", createErr);
                 this.showError("password", "לא ניתן ליצור משתמש חדש כרגע.");
@@ -349,11 +366,12 @@ class EcoWellnessLoginForm {
             return;
         }
 
-        // אם זה לא wrong-password ולא user-not-found
+        // 4. any other error
         console.error("login failed:", err);
         this.showError("password", "שגיאת התחברות");
         this.setLoading(false);
     }
+
 }
 
 
