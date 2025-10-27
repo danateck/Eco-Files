@@ -51,6 +51,7 @@
       display: flex;
       width: 100%;
       min-height: 100vh;
+      position: relative;
     }
 
     /* ----- SIDEBAR ----- */
@@ -63,6 +64,33 @@
       justify-content: space-between;
       padding: 1rem 1rem 0.75rem;
       box-shadow: 4px 0 16px rgba(0,0,0,0.3);
+
+      /* אנימציה/מעבר חלק */
+      transition: transform .25s ease-in-out;
+    }
+
+    /* מצב מובייל: הופך למגירה נשלפת */
+    @media (max-width: 760px) {
+      .sidebar {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100vh;
+        max-height: 100vh;
+        width: 220px;
+        max-width: 80%;
+        box-shadow: 0 0 30px rgba(0,0,0,0.6);
+        z-index: 9999;
+        background: linear-gradient(180deg, var(--bg-sidebar-from) 0%, var(--bg-sidebar-to) 100%);
+
+        /* מתחבא מחוץ למסך מצד ימין */
+        transform: translateX(100%);
+      }
+
+      /* כשהוא פתוח */
+      .sidebar.open {
+        transform: translateX(0);
+      }
     }
 
     .brand-block {
@@ -236,6 +264,21 @@
       flex-wrap: wrap;
       align-items: center;
       gap: .5rem;
+    }
+
+    /* כפתור תפריט בנייד */
+    .mobile-menu-btn {
+      display: none; /* יופיע רק במסכים קטנים דרך media query */
+      background: transparent;
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-sm);
+      font-size: 1rem;
+      line-height: 1;
+      padding: .4rem .6rem;
+      cursor: pointer;
+      color: var(--text-dark);
+      background-color: #fff;
+      box-shadow: 0 4px 10px rgba(0,0,0,.1);
     }
 
     .upload-btn {
@@ -482,12 +525,22 @@
       display: none !important;
     }
 
+    /* מובייל */
     @media (max-width: 760px) {
-      .sidebar {
-        display: none;
-      }
       .top-bar {
         border-radius: 0;
+      }
+
+      /* כפתור ההמבורגר נראה רק במובייל */
+      .mobile-menu-btn {
+        display: inline-block;
+      }
+    }
+
+    /* בדסקטופ לא צריך את כפתור ההמבורגר */
+    @media (min-width: 761px) {
+      .mobile-menu-btn {
+        display: none;
       }
     }
   </style>
@@ -504,7 +557,7 @@
 
   <div class="dashboard">
     <!-- ===== SIDEBAR ===== -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebarDrawer">
       <div>
         <div class="brand-block">
           <div class="brand-name">EcoDocs</div>
@@ -551,6 +604,9 @@
         </div>
 
         <div class="top-right">
+          <!-- כפתור פתיחה/סגירה של התפריט בנייד -->
+          <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
           <button class="upload-btn" id="uploadBtn">📤 העלה מסמך</button>
           <input type="file" id="fileInput" class="hidden-input" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
         </div>
@@ -618,6 +674,7 @@
 
     // סיידבר – מעבר בין מסכים (בית / משותף / סל מחזור)
     const menuItems = document.querySelectorAll(".menu-item");
+    const sidebarDrawer = document.getElementById("sidebarDrawer");
     menuItems.forEach(btn => {
       btn.addEventListener("click", () => {
         menuItems.forEach(b => b.classList.remove("active"));
@@ -631,8 +688,21 @@
         } else if (view === "recycle") {
           window.App?.openRecycleView();
         }
+
+        // במובייל - אחרי שבחרתי תפריט נסגור את הצד
+        if (window.matchMedia("(max-width: 760px)").matches) {
+          sidebarDrawer.classList.remove("open");
+        }
       });
     });
+
+    // כפתור ☰ במובייל לפתוח/לסגור את הסיידבר
+    const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+    if (mobileMenuBtn) {
+      mobileMenuBtn.addEventListener("click", () => {
+        sidebarDrawer.classList.toggle("open");
+      });
+    }
   </script>
 
   <!-- הסקריפט הראשי של האפליקציה -->
