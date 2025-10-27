@@ -305,57 +305,93 @@ class EcoWellnessLoginForm {
     }
 
     async handleSubmit(e) {
-        e.preventDefault();
+    e.preventDefault();
 
-        const okEmail = this.validateEmail();
-        const okPass = this.validatePassword();
-        if (!okEmail || !okPass) return;
+    const okEmail = this.validateEmail();
+    const okPass = this.validatePassword();
+    if (!okEmail || !okPass) return;
 
-        this.setLoading(true);
+    this.setLoading(true);
 
-        try {
-            // אנימציה קטנה
-            await new Promise(res => setTimeout(res, 300));
+    const email = this.emailInput.value.trim();
+    const password = this.passwordInput.value.trim();
 
-            const email = this.emailInput.value.trim();
-            const password = this.passwordInput.value.trim();
+    try {
+        // 1) try sign in
+        const userCred = await window.auth.signInWithEmailAndPassword(email, password);
 
-            const result = loginUser(email, password);
+        // if success: finish login (save current user etc)
+        this.finishLocalLogin(email);
 
-            if (!result.ok) {
-                // המצב היחיד שעדיין חוסם אותך הוא חשבון גוגל-בלבד
-                if (result.code === "GOOGLE_ONLY") {
-                    this.showError("email", "החשבון הזה נכנס רק עם Google.");
-                } else if (result.code === "BADPASS") {
-                    this.showError("password", "סיסמה שגויה");
-                    this.passwordInput.focus();
-                } else {
-                    this.showError("password", "שגיאת התחברות");
-                }
+    } catch (err) {
+        const code = err.code || "";
 
-                this.setLoading(false);
-                return;
-            }
-
-            // הצלחה (או משתמש חדש שנוצר עכשיו או משתמש קיים)
-            this.showHarmonySuccess();
-
-            setTimeout(() => {
-                window.location.href = "../../index.html";
-            }, 1500);
-
-        } catch (err) {
-            console.error(err);
-            this.showError("password", "אירעה שגיאה, נסי שוב");
+        if (code === "auth/wrong-password") {
+            // email exists but password is wrong
+            this.showError("password", "סיסמה שגויה");
+            this.passwordInput.focus();
             this.setLoading(false);
+            return;
         }
+
+        if (code === "auth/user-not-found") {
+            // first time ever → create account, then log them in
+            try {
+                const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
+
+                this.finishLocalLogin(email);
+
+            } catch (createErr) {
+                console.error("create user failed:", createErr);
+                this.showError("password", "לא ניתן ליצור משתמש חדש כרגע.");
+                this.setLoading(false);
+            }
+            return;
+        }
+
+        console.error("login failed:", err);
+        this.showError("password", "שגיאת התחברות");
+        this.setLoading(false);
     }
+}
+
+
+finishLocalLogin(email) {
+    // 1. save who is logged in so dashboard loads the right docs later
+    localStorage.setItem("docArchiveCurrentUser", email);
+
+    // 2. make sure the user exists in docArchiveUsers map
+    const STORAGE_KEY = "docArchiveUsers";
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const allUsers = raw ? JSON.parse(raw) : {};
+
+    if (!allUsers[email]) {
+        allUsers[email] = {
+            password: "", // we don't keep real password here anymore
+            docs: []      // start empty, dashboard may fill with defaults
+        };
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allUsers));
+
+    // 3. show little success animation
+    this.showHarmonySuccess();
+
+    // 4. go to dashboard
+    setTimeout(() => {
+        window.location.href = "../../index.html";
+    }, 1500);
+}
+
+
 
     showHarmonySuccess() {
         // מיני-אנימציה
         this.form.style.transform = 'scale(0.95)';
         this.form.style.opacity = '0';
 
+
+        
         setTimeout(() => {
             this.form.style.display = 'none';
             document
@@ -365,6 +401,9 @@ class EcoWellnessLoginForm {
             this.successMessage.classList.add('show');
         }, 300);
     }
+
+
+
 
     /* ---------------- Google Login ---------------- */
 

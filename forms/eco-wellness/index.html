@@ -145,10 +145,24 @@
     </div>
 
 
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
-    <script src="../../shared/js/form-utils.js"></script>
-    <script type="module" src="scriptLogin.js"></script>
+<script>
+  const firebaseConfig = {
+  apiKey: "AIzaSyBPr4X2_8JYCgXzMlTcVB0EJLhup9CdyYw",
+  authDomain: "login-page-echo-file.firebaseapp.com",
+  projectId: "login-page-echo-file",
+  storageBucket: "login-page-echo-file.appspot.com",
+  messagingSenderId: "200723524735",
+  appId: "1:200723524735:web:9eaed6ef10cbc2c406234a",
+  measurementId: "G-LT5XQFQPKP"
+};
+    firebase.initializeApp(firebaseConfig);
+
+  window.auth = firebase.auth();
+</script>
+  
+    <script  src="scriptLogin.js"></script>
 </body>
 </html>
