@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EcoDocs Dashboard</title>
 
-  <!-- פונט נקי ומודרני -->
+  <!-- פונט -->
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <!-- ה-CSS הקיים שלך (בשביל הכרטיסי דוקומנטים, נוטיפיקציות, וכו') -->
+  <!-- ה-CSS שלך -->
   <link rel="stylesheet" href="./CSS/main.css" />
 
   <style>
@@ -54,61 +54,54 @@
       position: relative;
     }
 
-.sidebar {
-  background: linear-gradient(180deg, var(--bg-sidebar-from) 0%, var(--bg-sidebar-to) 100%);
-  color: #fff;
-  width: 240px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  height: 100vh;
-  position: relative;
-  box-shadow: 4px 0 16px rgba(0,0,0,0.3);
-  padding: 1rem 1rem 0;
-  overflow-y: auto; /* allows scrolling if sidebar content is tall */
-}
+    .sidebar {
+      background: linear-gradient(180deg, var(--bg-sidebar-from) 0%, var(--bg-sidebar-to) 100%);
+      color: #fff;
+      width: 240px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      height: 100vh;
+      position: relative;
+      box-shadow: 4px 0 16px rgba(0,0,0,0.3);
+      padding: 1rem 1rem 0;
+      overflow-y: auto; /* גלילה אם התוכן גבוה */
+    }
 
-/* make sure all internal sections take natural space */
-.sidebar > div {
-  flex-shrink: 0;
-}
+    .sidebar > div {
+      flex-shrink: 0;
+    }
 
-/* this sticks logout to the exact bottom edge always */
-.sidebar-bottom {
-  position: absolute;
-  bottom: 1.56rem;
-  left: 0;
-  width: 100%;
-  padding: 0 1rem;
-  box-sizing: border-box;
-  border-top: 1px solid rgba(255,255,255,0.12);
-}
+    .sidebar-bottom {
+      position: absolute;
+      bottom: 1.56rem;
+      left: 0;
+      width: 100%;
+      padding: 0 1rem;
+      box-sizing: border-box;
+      border-top: 1px solid rgba(255,255,255,0.12);
+    }
 
-/* logout button styling */
-.logout-btn {
-  width: 100%;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: rgba(255,255,255,0.12);
-  color: #fff;
-        font-family: "Rubik", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    .logout-btn {
+      width: 100%;
+      border: 0;
+      border-radius: var(--radius-md);
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      font-family: "Rubik", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-weight: 600;
+      font-size: .9rem;
+      padding: .8rem .75rem;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(0,0,0,.4);
+      transition: background .18s, filter .18s;
+    }
+    .logout-btn:hover {
+      background: rgba(255,255,255,0.18);
+      filter: brightness(1.05);
+    }
 
-  font-weight: 600;
-  font-size: .9rem;
-  padding: .8rem .75rem;
-  cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0,0,0,.4);
-  transition: background .18s, filter .18s;
-}
-.logout-btn:hover {
-  background: rgba(255,255,255,0.18);
-  filter: brightness(1.05);
-}
-
-
-
-
-    /* מצב מובייל: הופך למגירה נשלפת */
+    /* מובייל: המגירה */
     @media (max-width: 760px) {
       .sidebar {
         position: fixed;
@@ -121,12 +114,8 @@
         box-shadow: 0 0 30px rgba(0,0,0,0.6);
         z-index: 9999;
         background: linear-gradient(180deg, var(--bg-sidebar-from) 0%, var(--bg-sidebar-to) 100%);
-
-        /* מתחבא מחוץ למסך מצד ימין */
         transform: translateX(100%);
       }
-
-      /* כשהוא פתוח */
       .sidebar.open {
         transform: translateX(0);
       }
@@ -232,31 +221,6 @@
       font-weight: 500;
     }
 
-    .sidebar-bottom {
-      border-top: 1px solid rgba(255,255,255,0.12);
-      padding-top: .75rem;
-      margin-top: 1rem;
-    }
-
-    .logout-btn {
-      width: 100%;
-      border: 0;
-      border-radius: var(--radius-md);
-      background: rgba(255,255,255,0.1);
-      color: #fff;
-      font-weight: 600;
-      font-size: .8rem;
-      padding: .6rem .75rem;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(0,0,0,.4);
-      transition: background .18s, filter .18s;
-    }
-    .logout-btn:hover {
-      background: rgba(255,255,255,0.18);
-      filter: brightness(1.05);
-    }
-
-    /* ----- MAIN CONTENT WRAPPER ----- */
     .main-area {
       flex: 1;
       min-width: 0;
@@ -265,7 +229,6 @@
       max-height: 100vh;
     }
 
-    /* ----- TOP BAR ----- */
     .top-bar {
       display: flex;
       justify-content: space-between;
@@ -305,9 +268,8 @@
       gap: .5rem;
     }
 
-    /* כפתור תפריט בנייד */
     .mobile-menu-btn {
-      display: none; /* יופיע רק במסכים קטנים דרך media query */
+      display: none;
       background: transparent;
       border: 1px solid var(--border-soft);
       border-radius: var(--radius-sm);
@@ -323,8 +285,7 @@
     .upload-btn {
       background: #301919;
       color: #b4b1b1;
-              font-family: "Rubik", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-
+      font-family: "Rubik", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       border: 0;
       border-radius: var(--radius-md);
       font-size: .8rem;
@@ -343,7 +304,6 @@
       display: none;
     }
 
-    /* ----- FILTER TABS ----- */
     .tabs-bar {
       background: #2b260b;
       border-bottom: 1px solid #d6e6df;
@@ -372,7 +332,6 @@
       color: var(--accent-strong);
     }
 
-    /* ----- MAIN CONTENT SECTIONS ----- */
     .content-scroll-area {
       flex: 1;
       min-height: 0;
@@ -399,62 +358,50 @@
       gap: .5rem;
     }
 
-.folder-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1.5rem;
-  align-items: start;
-  justify-items: center;
-}
+    .folder-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      align-items: start;
+      justify-items: center;
+    }
 
+    @media (min-width: 500px) {
+      .folder-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+    @media (min-width: 700px) {
+      .folder-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+    @media (min-width: 1000px) {
+      .folder-grid {
+        grid-template-columns: repeat(5, 1fr);
+      }
+    }
+    @media (min-width: 1300px) {
+      .folder-grid {
+        grid-template-columns: repeat(6, 1fr);
+      }
+    }
 
-.folder-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--radius-md);
-  padding: 2.2rem 3rem; /* more padding for bigger feel */
-  box-shadow: var(--shadow-card);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: .7rem;
-  transition: transform .18s, box-shadow .18s;
-  text-align: right;
-  width: 100%;
-  max-width: 320px; /* keeps them from becoming too huge on wide screens */
-}
-
-
-
-/* tablet-ish */
-@media (min-width: 500px) {
-  .folder-grid {
-    grid-template-columns: repeat(3, 1fr); /* 3 per row */
-  }
-}
-
-/* small laptop */
-@media (min-width: 700px) {
-  .folder-grid {
-    grid-template-columns: repeat(4, 1fr); /* 4 per row */
-  }
-}
-
-/* desktop */
-@media (min-width: 1000px) {
-  .folder-grid {
-    grid-template-columns: repeat(5, 1fr); /* 5 per row */
-  }
-}
-
-/* big desktop / wide screen */
-@media (min-width: 1300px) {
-  .folder-grid {
-    grid-template-columns: repeat(6, 1fr); /* 6 per row */
-  }
-}
-
-
+    .folder-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-md);
+      padding: 2.2rem 3rem;
+      box-shadow: var(--shadow-card);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: .7rem;
+      transition: transform .18s, box-shadow .18s;
+      text-align: right;
+      width: 100%;
+      max-width: 320px;
+    }
     .folder-card:hover {
       transform: translateY(-2px);
       box-shadow: 0 16px 32px rgba(0,0,0,0.12);
@@ -485,8 +432,7 @@
       font-weight: 600;
       color: var(--text-dark);
       line-height: 1.3;
-       font-family: "Rubik", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      
+      font-family: "Rubik", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
     .category-view-header {
@@ -556,26 +502,23 @@
       gap: .25rem;
     }
 
-
-
     .doc-open-link {
-  font-size: .8rem;
-  font-weight: 600;
-  color: #d9d9d9;                /* light grey text */
-  text-decoration: none;
-  background: #000;              /* black background */
-  padding: .5rem .9rem;
-  width: fit-content;
-  border-radius: var(--radius-sm);
-  box-shadow: 0 6px 14px rgba(0,0,0,0.25);
-  transition: background .18s, color .18s;
-  display: inline-block;
-}
-
-.doc-open-link:hover {
-  background: #222;              /* slightly lighter black on hover */
-  color: #ffffff;                /* full white on hover */
-}
+      font-size: .8rem;
+      font-weight: 600;
+      color: #d9d9d9;
+      text-decoration: none;
+      background: #000;
+      padding: .5rem .9rem;
+      width: fit-content;
+      border-radius: var(--radius-sm);
+      box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+      transition: background .18s, color .18s;
+      display: inline-block;
+    }
+    .doc-open-link:hover {
+      background: #222;
+      color: #ffffff;
+    }
 
     .notification {
       position: fixed;
@@ -605,67 +548,50 @@
       pointer-events: none;
     }
 
-    .hidden {
-      display: none !important;
-    }
+    .hidden { display: none !important; }
 
-    /* מובייל */
     @media (max-width: 760px) {
-      .top-bar {
-        border-radius: 0;
-      }
-
-      /* כפתור ההמבורגר נראה רק במובייל */
-      .mobile-menu-btn {
-        display: inline-block;
-      }
+      .top-bar { border-radius: 0; }
+      .mobile-menu-btn { display: inline-block; }
     }
-
-    /* בדסקטופ לא צריך את כפתור ההמבורגר */
     @media (min-width: 761px) {
-      .mobile-menu-btn {
-        display: none;
-      }
+      .mobile-menu-btn { display: none; }
     }
 
-
-
-    /* Mobile logout button - visible only on small screens */
-.mobile-logout {
-  display: none;
-}
-
-/* @media (max-width: 760px) {
-  .mobile-logout {
-    display: inline-block;
-    background: var(--grad-btn);
-    border: none;
-    border-radius: var(--radius-md);
-    color: #fff;
-    font-weight: 600;
-    font-size: .8rem;
-    padding: .55rem .9rem;
-    cursor: pointer;
-    box-shadow: var(--shadow-btn);
-  }
-} */
-
+    .mobile-logout {
+      display: none;
+    }
   </style>
 </head>
 
 <body>
 
-<!-- pdf.js (for turning first page of PDF into canvas) -->
-<!-- Load pdf.js so window.pdfjsLib exists -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- PDF.js (חייב לפני main.js) -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.js"></script>
+<script>
+  // לוודא שה-worker מוגדר
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
+    console.log("✅ pdfjsLib loaded", window.pdfjsLib);
+  } else {
+    console.warn("⚠️ pdfjsLib failed to load");
+  }
+</script>
 
-<!-- Load Tesseract.js so window.Tesseract exists -->
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
-
+<!-- Tesseract.js (ל-OCR) -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+  if (window.Tesseract) {
+    console.log("✅ Tesseract loaded");
+  } else {
+    console.warn("⚠️ Tesseract failed to load");
+  }
+</script>
 
 
   <script>
-    // אם אין יוזר מחובר - יזרוק לדף התחברות
+    // אם אין יוזר מחובר - נזרוק להתחברות
     const currentUser = localStorage.getItem("docArchiveCurrentUser");
     if (!currentUser) {
       window.location.href = "./forms/eco-wellness/index.html";
@@ -716,23 +642,28 @@
       <!-- בר עליון -->
       <header class="top-bar">
         <div class="top-left">
-          <h1 style="color: #000000; font-size:large ;" class="page-title">הארכיון שלי  </h1><h1 style="color: #000000; font-size:small ;" class="page-title">כל המסמכים שלך במקום אחד  </h1>
-          
+          <h1 style="color: #000000; font-size:large;" class="page-title">הארכיון שלי</h1>
+          <h1 style="color: #000000; font-size:small;" class="page-title">כל המסמכים שלך במקום אחד</h1>
         </div>
 
         <div class="top-right">
-          <!-- כפתור פתיחה/סגירה של התפריט בנייד -->
+          <!-- תפריט מובייל -->
           <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
-          <!-- Logout button for mobile -->
+          <!-- Logout במובייל -->
           <button class="logout-btn mobile-logout" id="mobileLogoutBtn">🚪 התנתקות</button>
 
-
+          <!-- כפתור העלאת קובץ -->
           <button class="upload-btn" id="uploadBtn">📤 העלה מסמך</button>
-          <input type="file" id="fileInput" class="hidden-input" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+          <input
+            type="file"
+            id="fileInput"
+            class="hidden-input"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.bmp,.doc,.docx"
+          />
         </div>
       </header>
 
-      <!-- טאבים למיון -->
+      <!-- טאבים (משתמשת בהמשך בעיקר למיון/תצוגה) -->
       <div class="tabs-bar">
         <button class="tab-btn active" data-sort="category">לפי קטגוריה</button>
         <button class="tab-btn" data-sort="year">לפי שנה</button>
@@ -753,6 +684,8 @@
           <div class="category-view-header">
             <button class="back-button" id="backButton">⬅ חזרה</button>
             <h2 class="category-title" id="categoryTitle">שם תיקייה</h2>
+
+            <!-- שומר את אותו select כמו שהיה לך, + שתי אפשרויות מיון לפי אחריות -->
             <select id="sortSelect" style="margin-right:auto; font-size:.75rem; padding:.4rem .5rem; border-radius:6px;">
               <option value="uploadedAt-desc">תאריך העלאה (חדש בהתחלה)</option>
               <option value="uploadedAt-asc">תאריך העלאה (ישן בהתחלה)</option>
@@ -762,10 +695,11 @@
               <option value="year-asc">שנה (ישן קודם)</option>
               <option value="title-asc">שם קובץ א→ת</option>
               <option value="title-desc">שם קובץ ת→א</option>
+              <option value="warrantyStart-desc">תאריך קנייה (חדש קודם)</option>
+              <option value="warrantyStart-asc">תאריך קנייה (ישן קודם)</option>
               <option value="warrantyExpiresAt-asc">פג תוקף אחריות (מוקדם קודם)</option>
               <option value="warrantyExpiresAt-desc">פג תוקף אחריות (מאוחר קודם)</option>
             </select>
-
           </div>
 
           <div class="docs-list" id="docsList"></div>
@@ -777,9 +711,9 @@
   <!-- התראות צפות -->
   <div id="notification" class="notification hidden"></div>
 
-  <!-- סקריפט עזר בתוך הדף (רק דברים כלליים שאינם העלאה) -->
+  <!-- סקריפט עזר UI (כניסה/יציאה/ניווט בתפריט) -->
   <script>
-    // ברוך הבא + המייל
+    // שם משתמש בפינה
     const label = document.getElementById("currentUserLabel");
     const mail = document.getElementById("currentUserEmail");
     const currentUserShown = localStorage.getItem("docArchiveCurrentUser");
@@ -794,20 +728,34 @@
         window.location.href = "./forms/eco-wellness/index.html";
       });
     }
+    const mobileLogoutBtn = document.getElementById("mobileLogoutBtn");
+    if (mobileLogoutBtn) {
+      mobileLogoutBtn.addEventListener("click", () => {
+        localStorage.removeItem("docArchiveCurrentUser");
+        window.location.href = "./forms/eco-wellness/index.html";
+      });
+    }
 
-    // טאבים
+    // טאבים בראש (רק עיצוב כרגע)
     const tabs = document.querySelectorAll(".tab-btn");
     tabs.forEach(tab => {
       tab.addEventListener("click", () => {
         tabs.forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
-        // אפשר להוסיף פה מיון בעתיד
       });
     });
 
-    // סיידבר – מעבר בין מסכים (בית / משותף / סל מחזור)
-    const menuItems = document.querySelectorAll(".menu-item");
+    // תפריט צד נפתח במובייל
     const sidebarDrawer = document.getElementById("sidebarDrawer");
+    const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+    if (mobileMenuBtn) {
+      mobileMenuBtn.addEventListener("click", () => {
+        sidebarDrawer.classList.toggle("open");
+      });
+    }
+
+    // מעבר בין דפים (בית / שיתוף / סל מחזור)
+    const menuItems = document.querySelectorAll(".menu-item");
     menuItems.forEach(btn => {
       btn.addEventListener("click", () => {
         menuItems.forEach(b => b.classList.remove("active"));
@@ -822,35 +770,16 @@
           window.App?.openRecycleView();
         }
 
-        // במובייל - אחרי שבחרתי תפריט נסגור את הצד
+        // אחרי בחירה במובייל – לסגור את הצד
         if (window.matchMedia("(max-width: 760px)").matches) {
           sidebarDrawer.classList.remove("open");
         }
       });
     });
-
-    // כפתור ☰ במובייל לפתוח/לסגור את הסיידבר
-    const mobileMenuBtn = document.getElementById("mobileMenuBtn");
-    if (mobileMenuBtn) {
-      mobileMenuBtn.addEventListener("click", () => {
-        sidebarDrawer.classList.toggle("open");
-      });
-    }
-
-    // Mobile logout
-const mobileLogoutBtn = document.getElementById("mobileLogoutBtn");
-if (mobileLogoutBtn) {
-  mobileLogoutBtn.addEventListener("click", () => {
-    localStorage.removeItem("docArchiveCurrentUser");
-    window.location.href = "./forms/eco-wellness/index.html";
-  });
-}
-
   </script>
 
-
-
-    <script type="module" src="./JS/main.js"></script>
+  <!-- פה נטען את הקוד הראשי של האפליקציה (שנעבוד עליו עכשיו) -->
+  <script src="./JS/main.js"></script>
 
 </body>
 </html>

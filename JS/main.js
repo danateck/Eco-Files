@@ -1,8 +1,10 @@
-import { fetchData } from "./utils/fetchData.js";
+// main.js
+// כל הלוגיקה של האפליקציה בצד הדפדפן בלבד
+// כולל OCR, חילוץ אחריות, שמירה בלוקאל סטורג', תצוגה, בלי שרת בכלל 💚
 
-/* -------------------------------------------------
-   1. קטגוריות ומילות מפתח
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 1. קטגוריות ומילות מפתח
+// -------------------------------------------------
 const CATEGORY_KEYWORDS = {
   "כלכלה": [
     "חשבון","חשבונית","חשבונית מס","חשבוניתמס","חשבוניתמס קבלה","קבלה","קבלות",
@@ -38,19 +40,11 @@ const CATEGORY_KEYWORDS = {
     "חיסון","חיסונים","תעודת התחסנות","פנקס חיסונים","כרטיס חיסונים","תעודת חיסונים",
     "אשפוז","אשפוז יום","מחלקה","בית חולים","ביתחולים","בי\"ח","ביה\"ח",
     "אישור מחלה","אישור מחלה לעבודה","אישור מחלה לבית ספר",
-    "אישור רפואי","אישור כשירות","אישור כשירות רפואית","גלאוקומה","לחץ דם גבוה","סכרת","סכרת סוג 2","סכרת סוג2",
+    "אישור רפואי","אישור כשירות","אישור כשירות רפואית",
     "טופס התחייבות","טופס 17","טופס17","התחייבות","התחיבות","התחיבות קופה","התחייבות קופה",
-    "בדיקת שמיעה","בדיקת ראיה","בדיקתראייה","בדיקת עיניים","בדיקת עין",
-    "בדיקת הריון","בדיקת היריון","בדיקת הריון ביתית","בטא","בטא hcg","US","אולטרסאונד",
-    "צילומי רנטגן","רנטגן","צילום חזה","צילום צוואר","MRI","סי טי","CT","ct","mri",
-    "קרדיולוג","קרדיולוגיה","נוירולוג","נוירולוגיה","אורתופד","אורתופדיה",
-    "אלרגיה","אלרגייה","אלרגי","אלרגית","אלרגיות",
-    "אלריגה","אלרגיה חמורה","ואלרגיה","ואלריגה","אלרגיות קשות","רגישות","רגישות יתר","רגישות לתרופות",
-    "אסתמה","אסטמה","אסטמא","אסתמא","אסתמטי","אסתמטית","קוצר נשימה","קושי נשימה","אלרגית אבק","אלרגיה לאבק",
-    "חירום רפואי","מוקד חירום","מוקד רפואה דחופה","רפואה דחופה","מוקד לילה","מוקד קורונה",
-    "בדיקת קורונה","קורונה חיובי","קורונה שלילי","COVID","covid","קורונה PCR","PCR",
-    "אישור רפואי לוועדה","ועדה רפואית","ועדת השמה רפואית","נכות רפואית","אחוזי נכות","קביעת נכות",
-    "פנימית","מחלה כרונית","מחלה כרונית פעילה","מחלות רקע","מצב רפואי"
+    "מרשם תרופות","רשימת תרופות","טיפול תרופתי",
+    "בדיקת קורונה","קורונה חיובי","קורונה שלילי","PCR","covid","בדיקת הריון","US","אולטרסאונד",
+    "נכות רפואית","ועדה רפואית","קביעת נכות"
   ],
 
   "עבודה": [
@@ -60,7 +54,7 @@ const CATEGORY_KEYWORDS = {
     "תלוש שכר","תלוששכר","תלוש משכורת","תלושי שכר","תלושי משכורת","שעות נוספות","שעותנוספות","רשימת משמרות","משמרות",
     "שכר עבודה","שכר לשעה","שכר חודשי","טופס שעות","אישור תשלום",
     "הצהרת מעסיק","טופס למעסיק","אישור מעסיק","אישור העסקה לצורך ביטוח לאומי",
-    "מכתב פיטורים","מכתב סיום העסקה","הודעה מוקדמת","שימוע לפני פיטורים","שימוע לפני פיטורין","פיטורים","פיטורין",
+    "מכתב פיטורים","מכתב סיום העסקה","הודעה מוקדמת","שימוע לפני פיטורים","פיטורים","פיטורין",
     "סיום העסקה","סיום יחסי עובד מעביד","יחסי עובד מעביד","עובד","מעסיק","מעסיקה",
     "הערכת עובד","הערכת ביצועים","דו\"ח ביצועים","חוות דעת מנהל","משוב עובד"
   ],
@@ -83,47 +77,21 @@ const CATEGORY_KEYWORDS = {
     "אחריות יבואן מורשה","אחריות לשנה","אחריות לשנתיים","אחריות ל12 חודשים","אחריות ל-12 חודשים",
     "אחריות ל24 חודשים","אחריות ל-24 חודשים","שנת אחריות","שנתיים אחריות","תום אחריות",
     "תאריך אחריות","תום תקופת האחריות","סיומה של האחריות","פג תוקף אחריות","פג תוקף האחריות",
-    "תעודת אחריות","ת.אחריות","ת. אחריות","תעודת-אחריות","תעודת אחריות למוצר","תעודת אחריות יצרן",
-    "תעוד אחריות","תעודת אחריות לקוח","כרטיס אחריות","כ.אחריות","כרטיס-אחריות",
-    "warranty","waranty","guarantee","guaranty","manufacturer warranty",
-    "limited warranty","1 year warranty","12 months warranty","24 months warranty",
-    "warranty card","warranty certificate","customer warranty card",
-    "הוכחת קנייה","הוכחת קניה","הוכחת רכישה","הוכחת רכישה למוצר","תעודת רכישה",
-    "אישור רכישה","אישור קנייה","אישור קניה","תעודת קניה","תעודת קנייה",
-    "חשבונית קנייה","חשבונית קניה","חשבונית רכישה",
-    "חשבונית מס קניה","חשבונית מס קנייה","חשבונית מס קניה למוצר","חשבונית מס קנייה למוצר",
-    "תעודת משלוח","ת.משלוח","תעודת-משלוח","תעודת מסירה","אישור מסירה",
-    "קבלה למוצר","קבלה מוצר","קבלה רכישה","קבלה לקניה","קבלה לקנייה",
-    "מספר סידורי מוצר","מספר סידורי","מספר סריאלי","מספר סידורי אחריות","serial number","s/n","sn:","s\\n","imei","imei1","imei2",
-    "כרטיס תיקון","כרטיס שירות","כרטיס שרות","דוח תיקון",
-    "תיקון במסגרת אחריות","טופס תיקון במסגרת אחריות",
-    "פתיחת קריאה","פתיחת קריאה שירות","פתיחת קריאת שירות","פתיחת קריאת תיקון",
-    "קריאת שירות","קריאת תיקון","service request","repair ticket","repair order","rma","rma form","rma request",
-    "return merchandise authorization",
-    "א. אחריות","פתק אחריות","אישור אחריות","אישור אחריות לקוח","אחריות חנות","אחריות מעבדה","אחריות מעבדה מורשית","טופס אחריות"
+    "תעודת אחריות","ת.אחריות","ת. אחריות","תעודת-אחריות","כרטיס אחריות",
+    "הוכחת קנייה","הוכחת קניה","אישור רכישה","חשבונית קנייה","תעודת משלוח","תעודת מסירה",
+    "מספר סידורי","serial number","imei","rma","repair ticket","repair order"
   ],
 
   "תעודות": [
-    "תעודת","תעודה","תעוד","תאוד","תעדה","תעודא",
-    "תעודת זהות","ת.ז","תז","תעודת זהוי","תעודת זהויי","תעודת זיהות","תז.","תז:",
-    "רישיון","רישיון נהיגה","רשיון נהיגה","רישיוןנהיגה","רישיון רכב","רשיון רכב","רשיון נהיגה זמני",
-    "דרכון","פספורט","passport","דרכון ביומטרי","דרכוןזמני","דרכון זמני",
-    "תעודת לידה","תעודתלידה","אישור לידה","אישור לידה בית חולים","תמצית רישום","תמצית רישום אוכלוסין",
-    "ספח","ספח תעודת זהות","ספח ת.ז","ספח תז","ספח ת.ז.",
-    "אישור לימודים","אישור רישום","אישורסטודנט","אישור סטודנט","אישור תלמיד","אישור תלמידה",
-    "בית ספר","ביה\"ס","גן ילדים","גני ילדים","תלמיד","תלמידה","סטודנט","סטודנטית",
-    "אישור מגורים","אישור כתובת","אישור תושבות","אישורתושב","אישור תושב קבע",
-    "תעודת התחסנות","כרטיס חיסונים"
+    "תעודת זהות","ת.ז","תז","תעודת לידה","ספח","ספח תעודת זהות","ספח ת.ז",
+    "רישיון נהיגה","רישיון רכב","דרכון","passport","דרכון ביומטרי",
+    "תעודת התחסנות","כרטיס חיסונים","אישור לימודים","אישור סטודנט","אישור תלמיד",
+    "אישור מגורים","אישור כתובת","אישור תושבות"
   ],
 
   "עסק": [
-    "עוסק מורשה","עוסק פטור","עוסקזעיר","תיק עוסק","פתיחת עוסק","סגירת עוסק","פתיחת תיק עוסק",
-    "חשבונית מס","חשבוניתמס","חשבונית מס קבלה","קבלה מס","חשבונאות","דו\"ח מע\"מ","דוח מע\"מ","מעמ","מע\"מ",
-    "ע.מ","עוסק","עוסק מורשה פעיל","עוסק פטור פעיל",
-    "חברה בע\"מ","חברה בעמ","בע\"מ","בעמ","תאגיד","תאגיד בע\"מ","מספר ח.פ","ח.פ",
-    "הצהרת הכנסות","הצהרת הכנסה","דוח הכנסות","דיווח הכנסה","דוח שנתי למס הכנסה",
-    "לקוח","לקוחה","לקוחות","חשבונית ללקוח","הצעת מחיר","הצעתמחיר","צעת מחיר","הצעת עבודה ללקוח",
-    "חשבונית עסקה","ספק","ספקית","ספקים","מספר עוסק","מספרעוסק"
+    "עוסק מורשה","עוסק פטור","תיק עוסק","חשבונית מס","דיווח מע\"מ","עוסק מורשה פעיל",
+    "חברה בע\"מ","ח.פ","מספר עוסק","הצעת מחיר","חשבונית ללקוח","ספק"
   ],
 
   "אחר": []
@@ -140,9 +108,9 @@ const CATEGORIES = [
   "אחר"
 ];
 
-/* -------------------------------------------------
-   2. LocalStorage helpers
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 2. LocalStorage helpers
+// -------------------------------------------------
 const STORAGE_KEY = "docArchiveUsers";
 const CURRENT_USER_KEY = "docArchiveCurrentUser";
 
@@ -177,9 +145,9 @@ function setUserDocs(username, docsArray, allUsersData) {
   saveAllUsersDataToStorage(allUsersData);
 }
 
-/* -------------------------------------------------
-   3. עזרים כלליים
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 3. עזרים כלליים
+// -------------------------------------------------
 function normalizeWord(word) {
   if (!word) return "";
   let w = word.trim().toLowerCase();
@@ -219,9 +187,9 @@ function guessCategoryForFileNameOnly(fileName) {
   return best;
 }
 
-/* -------------------------------------------------
-   3.1 OCR (תמונה בלבד)
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 3.1 OCR (תמונה בלבד)
+// -------------------------------------------------
 async function runOCR(file) {
   const mime = file.type.toLowerCase();
   const isImage =
@@ -251,80 +219,59 @@ async function runOCR(file) {
   return null;
 }
 
-
-// הופך עמוד ראשון של PDF (כולל PDF סרוק/מצולם) לתמונה, ואז עושה OCR על התמונה.
-// מחזיר טקסט שנקרא מהעמוד או null אם נכשל.
+// OCR ל-PDF (עמוד ראשון): מציירים לקנבס, עושים OCR על התמונה
+// קורא PDF, מרנדר את העמוד הראשון לתמונה, עושה עליו OCR ומחזיר טקסט
 async function extractTextFromPdfWithOcr(file) {
-  try {
-    if (!window.pdfjsLib) {
-        console.warn("pdfjsLib missing (pdf.js לא נטען)");
-        return null;
-    }
-    if (!window.Tesseract) {
-        console.warn("Tesseract missing (tesseract.js לא נטען)");
-        return null;
-    }
-
-    // נקרא את ה-PDF לזיכרון בתור ArrayBuffer
-    const arrayBuf = await file.arrayBuffer();
-
-    // טוענים את ה-PDF בעזרת pdf.js
-    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuf });
-    const pdf = await loadingTask.promise;
-
-    // ניקח את העמוד הראשון בלבד
-    const page = await pdf.getPage(1);
-
-    // נגדיר רזולוציה טובה ל-OCR
-    const scale = 2; // מעלה איכות. אם יצא מטושטש אפשר לעלות ל-3
-    const viewport = page.getViewport({ scale });
-
-    // נכין קנבס (canvas) לא מוצג לעין
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    // נצייר את העמוד לתוך הקנבס
-    await page.render({
-      canvasContext: ctx,
-      viewport
-    }).promise;
-
-    // נהפוך את הקנבס לתמונה (blob של PNG)
-    const blob = await new Promise(resolve => {
-      canvas.toBlob(resolve, "image/png");
-    });
-
-    if (!blob) {
-      console.warn("extractTextFromPdfWithOcr: failed to convert canvas to blob");
-      return null;
-    }
-
-    // עכשיו ניתן את התמונה ל-Tesseract לקריאת טקסט
-    const { data } = await window.Tesseract.recognize(blob, {
-      lang: "heb+eng"
-    });
-
-    if (data && data.text && data.text.trim().length > 0) {
-      return data.text;
-    }
-
-    console.warn("extractTextFromPdfWithOcr: OCR returned empty text");
-    return null;
-  } catch (err) {
-    console.error("extractTextFromPdfWithOcr error:", err);
-    return null;
+  // הגנה: אם pdfjsLib לא נטען
+  if (!window.pdfjsLib) {
+    console.warn("pdfjsLib missing");
+    return "";
   }
+
+  // נקרא את ה-PDF כ-ArrayBuffer
+  const arrayBuf = await file.arrayBuffer();
+
+  // נטען את ה-PDF דרך pdf.js
+  const pdf = await window.pdfjsLib.getDocument({ data: arrayBuf }).promise;
+  // ניקח בינתיים רק את העמוד הראשון
+  const page = await pdf.getPage(1);
+
+  // נהפוך את העמוד הזה ל-canvas
+  const viewport = page.getViewport({ scale: 2 }); // scale 2 = יותר חד ל-OCR
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+
+  const renderContext = {
+    canvasContext: ctx,
+    viewport: viewport,
+  };
+  await page.render(renderContext).promise;
+
+  // עכשיו יש לנו תמונה ב-canvas -> נוציא blob
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+
+  // נריץ OCR עם Tesseract
+  if (!window.Tesseract) {
+    console.warn("Tesseract missing");
+    return "";
+  }
+
+  const { data } = await window.Tesseract.recognize(blob, "heb+eng", {
+    tessedit_pageseg_mode: 6,
+  });
+
+  const ocrText = data && data.text ? data.text : "";
+  return ocrText;
 }
 
 
-/* -------------------------------------------------
-   3.2 חילוץ טקסטואלית של אחריות
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 3.2 חילוץ אחריות מתמליל (טקסט גולמי)
+// -------------------------------------------------
 function extractWarrantyFromText(rawBufferMaybe) {
-  // 1. להביא טקסט גולמי
+  // --- שלב 0: להכין טקסט ---
   let rawText = "";
   if (typeof rawBufferMaybe === "string") {
     rawText = rawBufferMaybe;
@@ -334,12 +281,13 @@ function extractWarrantyFromText(rawBufferMaybe) {
     rawText = String(rawBufferMaybe || "");
   }
 
-  // ננקה רווחים כפולים ונעבוד באותיות קטנות לחיפושים
-  const lower = rawText.replace(/\s+/g, " ").toLowerCase();
+  // נשמור עותק מקורי (לוג בהמשך אם נרצה), וגם גרסה מפושטת
+  const cleaned = rawText.replace(/\s+/g, " ").trim();
+  const lower   = cleaned.toLowerCase();
 
-  // ---------------------------------
-  // עזר 1: בדיקת תאריך חוקי (yyyy-mm-dd)
-  // ---------------------------------
+  // --- עוזרים פנימיים ---
+
+  // בדיקת yyy-mm-dd חוקי
   function isValidYMD(ymd) {
     if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
     const [Y, M, D] = ymd.split("-").map(n => parseInt(n, 10));
@@ -349,111 +297,88 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return !Number.isNaN(dt.getTime());
   }
 
-  // ---------------------------------
-  // עזר 2: המרת שנים של 2 ספרות ל־4 ספרות
-  // "23" -> "2023"
-  // "98" -> "1998"
-  // ---------------------------------
-  function expandYear(twoOrFour) {
-    if (!twoOrFour) return null;
-    if (twoOrFour.length === 4) return twoOrFour;
-    if (twoOrFour.length === 2) {
-      const yy = parseInt(twoOrFour, 10);
-      // נניח 00-49 זה 2000-2049, ו-50-99 זה 1950-1999
-      return (yy < 50 ? 2000 + yy : 1900 + yy).toString();
-    }
-    return null;
-  }
-
-  // ---------------------------------
-  // עזר 3: שמות חודשים -> מספר
-  // כולל עברית, אנגלית, וחודשים עבריים (בקירוב)
-  // ---------------------------------
+  // מיפוי שמות חודשים לטווחים כמו "15 פברואר 2025"
   const monthMap = {
     jan:"01", january:"01", feb:"02", february:"02", mar:"03", march:"03",
     apr:"04", april:"04", may:"05", jun:"06", june:"06", jul:"07", july:"07",
     aug:"08", august:"08", sep:"09", sept:"09", september:"09",
     oct:"10", october:"10", nov:"11", november:"11", dec:"12", december:"12",
+
     ינואר:"01", פברואר:"02", מרץ:"03", מרס:"03", אפריל:"04", מאי:"05",
     יוני:"06", יולי:"07", אוגוסט:"08", ספטמבר:"09", אוקטובר:"10",
     נובמבר:"11", דצמבר:"12",
-    תשרי:"09", חשוון:"10", חשון:"10", כסלו:"11", טבת:"12", שבט:"01",
-    אדר:"02", ניסן:"03", ניסן:"03", אייר:"04", אייר:"04",
-    סיוון:"05", סיון:"05", תמוז:"06", אב:"07", אלול:"08"
   };
 
-  // ---------------------------------
-  // עזר 4: הופך מחרוזת תאריך "כלשהי" ל־YYYY-MM-DD בטוח או null
-  // מקבל דברים כמו:
-  // "10/10/23", "10\10\2023", "2025-01-02", "10.10.2023", "10 oct 23", "oct 10, 2023", "10 אוקטובר 23"
-  // ---------------------------------
- function normalizeDateGuess(str) {
+  // הופך כל מחרוזת תאריך שנראית כמו 16/06/2025, או 16 יוני 2025, או 2025-06-16 -> yyyy-mm-dd
+  function normalizeDateGuess(str) {
     if (!str) return null;
 
-    // קודם כל נחתוך כל שעה אם יש (לדוגמה "10-10-23 17:53" -> "10-10-23")
-    let cut = str.split(" ")[0];
-
-    // עכשיו נעבוד על החלק שנשאר
-    let s = cut
+    // ננקה תווים
+    let s = str
       .replace(/[,]/g, " ")
-      .replace(/[.\/\\\-]+/g, "-") // כל מפריד → '-'
+      .replace(/[.\/\\\-]+/g, "-")
       .replace(/\s+/g, "-")
       .toLowerCase()
       .trim();
 
-    // דוגמא: "10-oct-23" או "oct-10-2023"
-    // נזהה מילים שהם חודשים
     const tokens = s.split("-");
-    // ננסה לזהות תבנית עם שם חודש
+
+    // מילולי (16 יוני 2025, 16 jun 2025)
     if (tokens.some(t => monthMap[t])) {
-        // אפשרויות:
-        //   DD-MON-YYYY
-        //   DD-MON-YY
-        //   MON-DD-YYYY
-        //   MON-DD-YY
-        if (tokens.length >= 3) {
-          // ננסה למצוא מה זה היום / חודש / שנה
-          let day = null, mon = null, year = null;
-          for (const t of tokens) {
-            if (monthMap[t]) {
-              mon = monthMap[t];
-            } else if (/^\d{1,2}$/.test(t) && parseInt(t,10) <= 31 && day === null) {
-              day = t.padStart(2,"0");
-            } else if (/^\d{2,4}$/.test(t) && year === null) {
-              year = expandYear(t);
-            }
-          }
-          if (day && mon && year) {
-            const ymd = `${year}-${mon}-${day}`;
-            if (isValidYMD(ymd)) return ymd;
+      let day = null, mon = null, year = null;
+      for (const t of tokens) {
+        if (monthMap[t]) {
+          mon = monthMap[t];
+        } else if (/^\d{1,2}$/.test(t) && parseInt(t,10) <= 31 && day === null) {
+          day = t.padStart(2,"0");
+        } else if (/^\d{2,4}$/.test(t) && year === null) {
+          if (t.length === 4) {
+            year = t;
+          } else if (t.length === 2) {
+            const yy = parseInt(t,10);
+            year = (yy < 50 ? 2000+yy : 1900+yy).toString();
           }
         }
+      }
+      if (day && mon && year) {
+        const ymd = `${year}-${mon}-${day}`;
+        if (isValidYMD(ymd)) return ymd;
+      }
     }
 
-    // אחרת - תבנית מספרים בלבד
-    // למשל "10-10-23" או "2023-10-10"
-    const nums = s.match(/\d+/g);
-    if (!nums || nums.length < 3) {
-      return null;
-    }
-
-    // case A: YYYY-MM-DD (חלק ראשון 4 ספרות)
-    if (nums[0].length === 4) {
-      const Y = nums[0];
-      const M = nums[1].padStart(2,"0");
-      const D = nums[2].padStart(2,"0");
-      const ymd = `${Y}-${M}-${D}`;
-      if (isValidYMD(ymd)) return ymd;
-    }
-
-    // case B: DD-MM-YYYY או DD-MM-YY
-    // nums[0] = יום, nums[1] = חודש, nums[2] = שנה
+    // yyyy-mm-dd
     {
-      const D = nums[0].padStart(2,"0");
-      const M = nums[1].padStart(2,"0");
-      const Y = expandYear(nums[2]);
-      if (Y) {
-        const ymd = `${Y}-${M}-${D}`;
+      const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (m) {
+        const y  = m[1];
+        const mo = m[2].padStart(2,"0");
+        const d  = m[3].padStart(2,"0");
+        const ymd = `${y}-${mo}-${d}`;
+        if (isValidYMD(ymd)) return ymd;
+      }
+    }
+
+    // dd-mm-yyyy
+    {
+      const m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (m) {
+        const d  = m[1].padStart(2,"0");
+        const mo = m[2].padStart(2,"0");
+        const y  = m[3];
+        const ymd = `${y}-${mo}-${d}`;
+        if (isValidYMD(ymd)) return ymd;
+      }
+    }
+
+    // dd-mm-yy
+    {
+      const m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
+      if (m) {
+        const d  = m[1].padStart(2,"0");
+        const mo = m[2].padStart(2,"0");
+        const yy = parseInt(m[3],10);
+        const fullY = (yy < 50 ? 2000+yy : 1900+yy).toString();
+        const ymd = `${fullY}-${mo}-${d}`;
         if (isValidYMD(ymd)) return ymd;
       }
     }
@@ -461,161 +386,150 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return null;
   }
 
-  // ---------------------------------
-  // 1. ננסה לחלץ "תאריך קנייה", "תאריך אספקה", וכו'
-  // ---------------------------------
-  function findDateByKeywords(keywords) {
+  // מחפש תאריך אחרי ביטוי מפתח ספציפי (כמו "תאריך חשבונית")
+  function findDateAfterKeywords(keywords, textToSearch) {
     for (const kw of keywords) {
-      // דוגמה מחפשת "תאריך קנייה:" ואז כל צורה של תאריך
-      // נשים קבוצה גדולה מאוד של דפוסים:
+      // נבנה regex: מילה/ביטוי ואחריו איזה רווחים ואז תאריך
+      // דוגמא תופסת:
+      // "תאריך חשבונית 16/06/2025"
+      // "invoice date: 10-10-23"
       const pattern =
         kw +
-        "\\s*[:\\-]?" +
-        "\\s*(ביום|ב|ל|on|at)?\\s*" +
+        "[ \\t:]*" +
         "(" +
-          // מספרי: 10/10/23 | 10-10-2023 | 2023.10.10 | 10\10\23
           "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
           "|" +
           "\\d{4}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{1,2}" +
           "|" +
-          // מילים באנגלית: 10 Oct 2023 | Oct 10, 23
-          "\\d{1,2}\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\s+\\d{2,4}" +
-          "|" +
-          "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\s+\\d{1,2},?\\s+\\d{2,4}" +
-          "|" +
-          // עברית: 10 אוקטובר 23 | 10 תשרי תשפד (ננסה להתעלם מהשנה העברית כרגע אם היא לא ניתנת לפענוח מספרי)
-          "\\d{1,2}\\s+(ינואר|פברואר|מרץ|מרס|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר|תשרי|חשוון|חשון|כסלו|טבת|שבט|אדר|ניסן|אייר|סיוון|סיון|תמוז|אב|אלול)\\s+\\d{2,4}" +
+          "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +
         ")";
-
-      const regex = new RegExp(pattern, "i");
-      const m = lower.match(regex);
-      if (m && m[2]) {
-        const ymd = normalizeDateGuess(m[2]);
-        if (isValidYMD(ymd)) {
-          return ymd;
-        }
+      const re = new RegExp(pattern, "i");
+      const m = textToSearch.match(re);
+      if (m && m[1]) {
+        const guess = normalizeDateGuess(m[1]);
+        if (isValidYMD(guess)) return guess;
       }
     }
     return null;
   }
 
-  let warrantyStart = findDateByKeywords([
-    "תאריך ק.?נ.?י.?ה",
-    "תאריך רכישה",
-    "תאריך קניה",
-    "תאריך קנייה",
-    "תאריך הקניה",
-    "תאריך הקנייה",
-    "תאריך אספקה",
-    "תאריך משלוח",
-    "תאריך מסירה",
-    "נרכש בתאריך",
-    "purchase date",
-    "date of purchase",
-    "invoice date",
-    "buy date"
-  ]);
+  // 1. ננסה תאריך קנייה / רכישה / חשבונית / משלוח / אספקה וכו'
+  let warrantyStart = findDateAfterKeywords([
+    "תאריך\\s*ק.?נ.?י.?ה",
+    "תאריך\\s*רכישה",
+    "תאריך\\s*קניה",
+    "תאריך\\s*קנייה",
+    "תאריך\\s*הקניה",
+    "תאריך\\s*הקנייה",
+    "תאריך\\s*חשבונית",
+    "ת\\.?\\s*חשבונית",
+    "תאריך\\s*תעודת\\s*משלוח",
+    "תאריך\\s*משלוח",
+    "תאריך\\s*אספקה",
+    "תאריך\\s*מסירה",
+    "נרכש\\s*בתאריך",
+    "invoice\\s*date",
+    "purchase\\s*date",
+    "date\\s*of\\s*purchase",
+    "buy\\s*date",
+    "invoice\\s*#?date",
+    "bill\\s*date"
+  ], lower);
 
-  // ---------------------------------
-  // 2. אם אין עדיין, ניקח את התאריך הראשון שמופיע במסמך בכלל
-  // ---------------------------------
+  // 2. ננסה למצוא תאריך אחריות / תוקף אחריות
+  let warrantyExpiresAt = findDateAfterKeywords([
+    "תוקף\\s*אחריות",
+    "תוקף\\s*האחריות",
+    "האחריות\\s*בתוקף\\s*עד",
+    "בתוקף\\s*עד",
+    "אחריות\\s*עד",
+    "warranty\\s*until",
+    "warranty\\s*expiry",
+    "warranty\\s*expires",
+    "valid\\s*until",
+    "expiry\\s*date",
+    "expiration\\s*date"
+  ], lower);
+
+  // 3. Fallback חכם:
+  // אם עדיין אין לנו warrantyStart:
+  // נבדוק אם בכל המסמך יש בדיוק תאריך אחד ברור. אם כן - ניקח אותו.
   if (!warrantyStart) {
-    // ענק-רב-פורמטים, כמו קודם, אבל כ-match גלובלי
+    // נמצא את *כל* התאריכים בטקסט
     const anyDateRegex = new RegExp(
       "(" +
         "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
         "|" +
         "\\d{4}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{1,2}" +
         "|" +
-        "\\d{1,2}\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\s+\\d{2,4}" +
-        "|" +
-        "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\s+\\d{1,2},?\\s+\\d{2,4}" +
-        "|" +
-        "\\d{1,2}\\s+(ינואר|פברואר|מרץ|מרס|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר|תשרי|חשוון|חשון|כסלו|טבת|שבט|אדר|ניסן|אייר|סיוון|סיון|תמוז|אב|אלול)\\s+\\d{2,4}" +
+        "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +
       ")",
       "ig"
     );
-
-    const m2 = lower.match(anyDateRegex);
-    if (m2 && m2.length > 0) {
-      for (const candidate of m2) {
-        const ymd = normalizeDateGuess(candidate);
-        if (isValidYMD(ymd)) {
-          warrantyStart = ymd;
-          break;
-        }
+    const matches = [...lower.matchAll(anyDateRegex)].map(m => m[1]);
+    // נעביר דרך normalizeDateGuess ונסנן null
+    const normalized = [];
+    for (const candidate of matches) {
+      const ymd = normalizeDateGuess(candidate);
+      if (isValidYMD(ymd)) {
+        normalized.push(ymd);
       }
+    }
+    // אם יש רק אחד ייחודי → ניקח אותו בתור תאריך קנייה
+    const unique = [...new Set(normalized)];
+    if (unique.length === 1) {
+      warrantyStart = unique[0];
     }
   }
 
-  // ---------------------------------
-  // 3. למצוא "תוקף אחריות עד", "warranty until", וכו'
-  // ---------------------------------
-  let warrantyExpiresAt = findDateByKeywords([
-    "תוקף אחריות",
-    "תוקף האחריות",
-    "האחריות בתוקף עד",
-    "בתוקף עד",
-    "אחריות עד",
-    "warranty until",
-    "warranty expiry",
-    "warranty expires",
-    "valid until",
-    "expiry date",
-    "expiration date"
-  ]);
-
-  // ---------------------------------
-  // 4. אם אין תוקף אבל יש תאריך התחלה -> נניח שנה אחריות
-  // ---------------------------------
+  // 4. אם אין סוף אחריות אבל יש תאריך קנייה -> נניח שנה
   if (!warrantyExpiresAt && warrantyStart && isValidYMD(warrantyStart)) {
     const [Y,M,D] = warrantyStart.split("-");
     const startDate = new Date(`${Y}-${M}-${D}T00:00:00`);
     if (!Number.isNaN(startDate.getTime())) {
       const endDate = new Date(startDate.getTime());
-      endDate.setMonth(endDate.getMonth() + 12); // שנה אחריות
+      endDate.setMonth(endDate.getMonth() + 12);
       const yyyy = endDate.getFullYear();
-      const mm = String(endDate.getMonth() + 1).padStart(2, "0");
-      const dd = String(endDate.getDate()).padStart(2, "0");
+      const mm   = String(endDate.getMonth() + 1).padStart(2, "0");
+      const dd   = String(endDate.getDate()).padStart(2, "0");
       warrantyExpiresAt = `${yyyy}-${mm}-${dd}`;
     }
   }
 
-  // ---------------------------------
-  // 5. מחיקה אוטומטית: רק אם יש תאריך תוקף חוקי
-  // ---------------------------------
+  // 5. autoDeleteAfter = שנתיים אחרי סוף האחריות
   let autoDeleteAfter = null;
   if (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) {
     const [Y2,M2,D2] = warrantyExpiresAt.split("-");
     const expDate = new Date(`${Y2}-${M2}-${D2}T00:00:00`);
     if (!Number.isNaN(expDate.getTime())) {
       const del = new Date(expDate.getTime());
-      del.setMonth(del.getMonth() + 24); // שנתיים אחרי תום האחריות
-      const yyyy2 = del.getFullYear();
-      const mm2 = String(del.getMonth() + 1).padStart(2, "0");
-      const dd2 = String(del.getDate()).padStart(2, "0");
-      autoDeleteAfter = `${yyyy2}-${mm2}-${dd2}`;
+      del.setMonth(del.getMonth() + 24);
+      const y3 = del.getFullYear();
+      const m3 = String(del.getMonth() + 1).padStart(2, "0");
+      const d3 = String(del.getDate()).padStart(2, "0");
+      autoDeleteAfter = `${y3}-${m3}-${d3}`;
     }
   }
 
   return {
-    warrantyStart: isValidYMD(warrantyStart) ? warrantyStart : null,
-    warrantyExpiresAt: isValidYMD(warrantyExpiresAt) ? warrantyExpiresAt : null,
+    warrantyStart: (warrantyStart && isValidYMD(warrantyStart)) ? warrantyStart : null,
+    warrantyExpiresAt: (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) ? warrantyExpiresAt : null,
     autoDeleteAfter
   };
 }
 
 
 
-/* -------------------------------------------------
-   3.3 fallback – נשאל אותך אם אין כלום
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 3.3 fallback – אם לא הצלחנו בכלל לקרוא תאריכים,
+// נשאל את המשתמש ידנית (מה תאריך הקנייה? עד מתי האחריות?)
+// -------------------------------------------------
 function fallbackAskWarrantyDetails() {
   const startAns = prompt(
-    "אני לא הצלחתי לקרוא אוטומטית.\nמה תאריך הקנייה? (לדוגמה 28/10/2025)"
+    "לא הצלחתי לזהות אוטומטית.\nמה תאריך הקנייה? (למשל 28/10/2025)"
   );
   const expAns = prompt(
-    "עד מתי האחריות בתוקף? (לדוגמה 28/10/2026)\nאם אין אחריות / לא רלוונטי אפשר לבטל."
+    "עד מתי האחריות בתוקף? (למשל 28/10/2026)\nאם אין אחריות/לא רלוונטי אפשר לבטל."
   );
 
   function normalizeManualDate(str) {
@@ -625,11 +539,13 @@ function fallbackAskWarrantyDetails() {
     if (parts.length === 3) {
       let [a,b,c] = parts;
       if (a.length === 4) {
+        // yyyy-mm-dd
         const yyyy = a;
         const mm = b.padStart(2, "0");
         const dd = c.padStart(2, "0");
         return `${yyyy}-${mm}-${dd}`;
       } else if (c.length === 4) {
+        // dd-mm-yyyy
         const yyyy = c;
         const mm = b.padStart(2, "0");
         const dd = a.padStart(2, "0");
@@ -656,9 +572,9 @@ function fallbackAskWarrantyDetails() {
   };
 }
 
-/* -------------------------------------------------
-   3.4 התראות
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 3.4 הודעות toast
+// -------------------------------------------------
 function showNotification(message, isError = false) {
   const box = document.getElementById("notification");
   if (!box) return;
@@ -669,9 +585,9 @@ function showNotification(message, isError = false) {
   }, 3000);
 }
 
-/* -------------------------------------------------
-   3.5 מחיקה אוטומטית (חוק התיישנות)
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 3.5 ניקוי מסמכי אחריות שפג להם זמן השמירה
+// -------------------------------------------------
 function purgeExpiredWarranties(docsArray) {
   const today = new Date();
   let changed = false;
@@ -693,11 +609,11 @@ function purgeExpiredWarranties(docsArray) {
   return changed;
 }
 
-/* -------------------------------------------------
-   3.6 מיון
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 3.6 מיון
+// -------------------------------------------------
 let currentSortField = "uploadedAt";
-let currentSortDir = "desc";
+let currentSortDir   = "desc";
 
 function sortDocs(docsArray) {
   const arr = [...docsArray];
@@ -732,15 +648,14 @@ function sortDocs(docsArray) {
     if (av > bv) return currentSortDir === "asc" ? 1 : -1;
     return 0;
   });
-
   return arr;
 }
 
-/* -------------------------------------------------
-   4. אפליקציה
-   ------------------------------------------------- */
+// -------------------------------------------------
+// 4. אפליקציה / UI
+// -------------------------------------------------
 document.addEventListener("DOMContentLoaded", async () => {
-  const currentUser = getCurrentUser();
+  const currentUser   = getCurrentUser();
   if (!currentUser) {
     window.location.href = "login.html";
     return;
@@ -759,18 +674,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   let allUsersData = loadAllUsersDataFromStorage();
   let allDocsData  = getUserDocs(currentUser, allUsersData);
 
+  // אם המשתמש חדש לגמרי - נתחיל ריק
   if (!allDocsData || allDocsData.length === 0) {
-    try {
-      const data = await fetchData("./API/documents.json");
-      allDocsData = Array.isArray(data) ? data : [];
-      setUserDocs(currentUser, allDocsData, allUsersData);
-    } catch (err) {
-      console.error("Error loading initial data:", err);
-      allDocsData = [];
-      setUserDocs(currentUser, allDocsData, allUsersData);
-    }
+    allDocsData = [];
+    setUserDocs(currentUser, allDocsData, allUsersData);
   }
 
+  // ננקה מסמכי אחריות שפג להם הזמן
   const removed = purgeExpiredWarranties(allDocsData);
   if (removed) {
     setUserDocs(currentUser, allDocsData, allUsersData);
@@ -942,12 +852,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   function deleteDocForever(id) {
     const i = allDocsData.findIndex(d => d.id === id);
     if (i > -1) {
-        allDocsData.splice(i, 1);
-        setUserDocs(currentUser, allDocsData, allUsersData);
-        showNotification("הקובץ נמחק לצמיתות");
+      allDocsData.splice(i, 1);
+      setUserDocs(currentUser, allDocsData, allUsersData);
+      showNotification("הקובץ נמחק לצמיתות");
     }
   }
 
+  // חשיפה לניווט בכפתורים שב-header
   window.App = {
     renderHome,
     openSharedView,
@@ -958,10 +869,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderHome();
   });
 
+  // טיפול בלחיצה על "העלאת קובץ"
   uploadBtn.addEventListener("click", () => {
     fileInput.click();
   });
 
+  // מיון
   if (sortSelect) {
     sortSelect.addEventListener("change", () => {
       const [field, dir] = sortSelect.value.split("-");
@@ -973,11 +886,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // ====== העלאת קובץ ======
+  // הטיפול הראשי בהעלאת קובץ
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files[0];
-    console.log("📁 MIME TYPE:", file?.type, "NAME:", file?.name);
-
     if (!file) {
       showNotification("❌ לא נבחר קובץ", true);
       return;
@@ -986,7 +897,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const fileName = file.name.trim();
 
-      // מניעת כפילות
+      // למנוע כפילויות
       const alreadyExists = allDocsData.some(doc => {
         return (
           doc.originalFileName === fileName &&
@@ -999,7 +910,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // ניחוש קטגוריה
+      // ניחוש קטגוריה לפי שם
       let guessedCategory = guessCategoryForFileNameOnly(file.name);
       if (!guessedCategory || guessedCategory === "אחר") {
         const manual = prompt(
@@ -1014,178 +925,149 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       }
 
-      // שדות אחריות (יתמלאו אוטומטית אם נצליח)
+      // ערכי אחריות שננסה למלא
       let warrantyStart = null;
       let warrantyMonths = null;
       let warrantyExpiresAt = null;
       let autoDeleteAfter = null;
-      
 
-if (guessedCategory === "אחריות") {
-  console.log("🟡 נכנס לקטגוריה אחריות");
+      if (guessedCategory === "אחריות") {
+        console.log("🟡 קובץ בקטגוריית 'אחריות' => מפעילים OCR וניתוח");
 
-  // זה האובייקט שנמלא ונכניס למסמך
-  let extracted = {
-    warrantyStart: null,
-    warrantyExpiresAt: null,
-    autoDeleteAfter: null
-  };
+        // extracted ישמור את מה שנצליח לחלץ
+        let extracted = {
+          warrantyStart: null,
+          warrantyExpiresAt: null,
+          autoDeleteAfter: null
+        };
 
-  try {
-    console.log("🟡 מתחיל חילוץ אחריות אוטומטי");
+        try {
+          let rawText = "";
+          try {
+            rawText = await file.text(); // עבור PDF עם שכבת טקסט אמיתית
+          } catch (e1) {
+            rawText = "";
+          }
 
-    // נקרא שכבת טקסט גולמית אם קיימת (ל-PDF טקסטואלי/חשבונית דיגיטלית)
-    let rawText = "";
-    try {
-      rawText = await file.text(); // אם זה PDF "חי" עם שכבת טקסט - נקבל טקסט קריא
-    } catch (e1) {
-      rawText = "";
-    }
+          const mime = file.type?.toLowerCase() || "";
+          const isImage =
+            mime.startsWith("image/") ||
+            file.name.toLowerCase().match(/\.(jpg|jpeg|png|heic|webp|bmp)$/);
+          const isPdf = mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
-    const mime = file.type?.toLowerCase() || "";
-    const isImage =
-      mime.startsWith("image/") ||
-      file.name.toLowerCase().match(/\.(jpg|jpeg|png|heic|webp|bmp)$/);
-    const isPdf = mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+          if (rawText && rawText.length > 20) {
+            // מצב 1: יש טקסט גולמי מהקובץ (חשבונית דיגיטלית)
+            extracted = extractWarrantyFromText(rawText);
 
-    console.log("🔍 סוג קובץ:", { mime, isImage, isPdf });
+            // אם לא הצליח וזו כנראה PDF סרוקה, ננסה OCR של העמוד הראשון
+            if (
+              isPdf &&
+              (!extracted.warrantyStart && !extracted.warrantyExpiresAt)
+            ) {
+              const pdfOcrText = await extractTextFromPdfWithOcr(file);
+              if (pdfOcrText && pdfOcrText.trim().length > 0) {
+                const ocrExtracted = extractWarrantyFromText(pdfOcrText);
+                if (
+                  (ocrExtracted.warrantyStart && !extracted.warrantyStart) ||
+                  (ocrExtracted.warrantyExpiresAt && !extracted.warrantyExpiresAt)
+                ) {
+                  extracted = ocrExtracted;
+                }
+              }
+            }
 
-    if (rawText && rawText.length > 20) {
-  console.log("📜 מצב 1: יש שכבת טקסט בקובץ (rawText)");
-  extracted = extractWarrantyFromText(rawText);
-  console.log("📄 תוצאה אחרי rawText בלבד:", extracted);
+          } else if (isImage) {
+            // מצב 2: תמונה => OCR ישיר
+            const ocrText = await runOCR(file);
+            if (ocrText && ocrText.trim().length > 0) {
+              extracted = extractWarrantyFromText(ocrText);
+            }
 
-  // ❗ חידוש: אם עדיין אין תאריך, ונראה שזה PDF עם תמונה,
-  // ננסה גם OCR על ה-PDF (מצב 3) כדי לקרוא דברים שנשארו כתמונה.
-  if (
-    isPdf &&
-    (!extracted.warrantyStart && !extracted.warrantyExpiresAt)
-  ) {
-    console.log("🔁 מצב 1 לא מצא תאריך, מנסה OCR על ה-PDF בכל זאת (מצב 3)");
-    const pdfOcrText = await extractTextFromPdfWithOcr(file);
-    console.log("PDF OCR TEXT (first 200):", pdfOcrText?.slice(0,200));
-    if (pdfOcrText && pdfOcrText.trim().length > 0) {
-      const ocrExtracted = extractWarrantyFromText(pdfOcrText);
-      console.log("📄 תוצאה אחרי OCR על PDF:", ocrExtracted);
-      // אם ה-OCR הצליח יותר מהטקסט הרגיל, ניקח אותו
-      if (
-        (ocrExtracted.warrantyStart && !extracted.warrantyStart) ||
-        (ocrExtracted.warrantyExpiresAt && !extracted.warrantyExpiresAt)
-      ) {
-        extracted = ocrExtracted;
+          } else if (isPdf) {
+            // מצב 3: PDF סרוק => OCR מהעמוד הראשון
+            const pdfOcrText = await extractTextFromPdfWithOcr(file);
+            if (pdfOcrText && pdfOcrText.trim().length > 0) {
+              extracted = extractWarrantyFromText(pdfOcrText);
+            }
+
+          } else {
+            // fallback אחרון: arrayBuffer decode
+            const buf = await file.arrayBuffer();
+            const decoder = new TextDecoder("utf-8");
+            const bufText = decoder.decode(buf || new ArrayBuffer());
+            if (bufText && bufText.trim().length > 0) {
+              extracted = extractWarrantyFromText(bufText);
+            }
+          }
+
+          // אם אין עדיין תאריכים בכלל: נשאל אותך ידנית (מה שחשוב לך!)
+          if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
+            const manualData = fallbackAskWarrantyDetails();
+            if (manualData.warrantyStart) {
+              extracted.warrantyStart = manualData.warrantyStart;
+            }
+            if (manualData.warrantyExpiresAt) {
+              extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
+            }
+            if (manualData.autoDeleteAfter) {
+              extracted.autoDeleteAfter = manualData.autoDeleteAfter;
+            }
+          }
+
+          // אם יש רק תאריך קנייה ואין "תוקף אחריות עד" → נניח שנה אחריות
+          if (
+            extracted.warrantyStart &&
+            !extracted.warrantyExpiresAt &&
+            /^\d{4}-\d{2}-\d{2}$/.test(extracted.warrantyStart)
+          ) {
+            const guessEnd = new Date(extracted.warrantyStart + "T00:00:00");
+            guessEnd.setMonth(guessEnd.getMonth() + 12);
+            const yyyy = guessEnd.getFullYear();
+            const mm = String(guessEnd.getMonth() + 1).padStart(2, "0");
+            const dd = String(guessEnd.getDate()).padStart(2, "0");
+            extracted.warrantyExpiresAt = `${yyyy}-${mm}-${dd}`;
+          }
+
+          // אם יש "תוקף אחריות עד" ואין autoDeleteAfter → נוסיף +24 חודשים
+          if (
+            extracted.warrantyExpiresAt &&
+            !extracted.autoDeleteAfter &&
+            /^\d{4}-\d{2}-\d{2}$/.test(extracted.warrantyExpiresAt)
+          ) {
+            const delDate = new Date(extracted.warrantyExpiresAt + "T00:00:00");
+            delDate.setMonth(delDate.getMonth() + 24);
+            extracted.autoDeleteAfter = delDate.toISOString().split("T")[0];
+          }
+
+          // מיפוי הסופי למשתנים שנשמור בדוקומנט
+          warrantyStart       = extracted.warrantyStart       || null;
+          warrantyExpiresAt   = extracted.warrantyExpiresAt   || null;
+          autoDeleteAfter     = extracted.autoDeleteAfter     || null;
+          warrantyMonths      = null; // לא שואלים כמה חודשים, לפי הבקשה שלך
+
+        } catch (err) {
+          console.warn("auto extraction failed", err);
+          warrantyStart     = null;
+          warrantyExpiresAt = null;
+          autoDeleteAfter   = null;
+          warrantyMonths    = null;
+        }
       }
-    }
-  }
 
-} else if (isImage) {
-  console.log("🖼 מצב 2: מנסים OCR על תמונה (runOCR)");
-  const ocrText = await runOCR(file);
-  console.log("OCR IMAGE TEXT (first 200):", ocrText?.slice(0,200));
-  if (ocrText && ocrText.trim().length > 0) {
-    extracted = extractWarrantyFromText(ocrText);
-  }
-
-} else if (isPdf) {
-  console.log("📄 מצב 3: PDF, מנסים extractTextFromPdfWithOcr");
-  const pdfOcrText = await extractTextFromPdfWithOcr(file);
-  console.log("PDF OCR TEXT (first 200):", pdfOcrText?.slice(0,200));
-  if (pdfOcrText && pdfOcrText.trim().length > 0) {
-    extracted = extractWarrantyFromText(pdfOcrText);
-  }
-
-} else {
-  console.log("🪫 מצב 4: fallback arrayBuffer decode");
-  const buf = await file.arrayBuffer();
-  const decoder = new TextDecoder("utf-8");
-  const bufText = decoder.decode(buf || new ArrayBuffer());
-  console.log("BUF TEXT (first 200):", bufText.slice(0,200));
-  if (bufText && bufText.trim().length > 0) {
-    extracted = extractWarrantyFromText(bufText);
-  }
-}
-
-
-    console.log("📄 תוצאה מהחילוץ הראשוני:", extracted);
-
-    // אם עדיין לא הצלחנו לזהות כלום -> אין תאריך קנייה ואין תאריך תוקף
-    // רק אז נבקש ממך ידנית
-    if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
-      console.log("❌ אין לי עדיין אף תאריך -> אשאל ידנית");
-      const manualData = fallbackAskWarrantyDetails();
-      if (manualData.warrantyStart) {
-        extracted.warrantyStart = manualData.warrantyStart;
-      }
-      if (manualData.warrantyExpiresAt) {
-        extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
-      }
-      if (manualData.autoDeleteAfter) {
-        extracted.autoDeleteAfter = manualData.autoDeleteAfter;
-      }
-    } else {
-      console.log("✅ זיהיתי לבד תאריכים, לא אשאל ידנית");
-    }
-
-    // אם יש לנו תאריך קנייה אבל אין 'תוקף אחריות עד'
-    // נניח אחריות לשנה מהקנייה
-    if (
-      extracted.warrantyStart &&
-      !extracted.warrantyExpiresAt &&
-      /^\d{4}-\d{2}-\d{2}$/.test(extracted.warrantyStart)
-    ) {
-      const guessEnd = new Date(extracted.warrantyStart + "T00:00:00");
-      guessEnd.setMonth(guessEnd.getMonth() + 12); // אחריות שנה
-      const yyyy = guessEnd.getFullYear();
-      const mm = String(guessEnd.getMonth() + 1).padStart(2, "0");
-      const dd = String(guessEnd.getDate()).padStart(2, "0");
-      extracted.warrantyExpiresAt = `${yyyy}-${mm}-${dd}`;
-    }
-
-    // אם יש 'תוקף אחריות עד' אבל אין 'מחיקה אוטומטית אחרי' → נוסיף עוד 24 חודשים (חוק התיישנות)
-    if (
-      extracted.warrantyExpiresAt &&
-      !extracted.autoDeleteAfter &&
-      /^\d{4}-\d{2}-\d{2}$/.test(extracted.warrantyExpiresAt)
-    ) {
-      const delDate = new Date(extracted.warrantyExpiresAt + "T00:00:00");
-      delDate.setMonth(delDate.getMonth() + 24); // שנתיים אחרי תום האחריות
-      extracted.autoDeleteAfter = delDate.toISOString().split("T")[0];
-    }
-
-    console.log("✅ נתונים סופיים לאחריות אחרי חישובים:", extracted);
-
-    // ולבסוף נמפה את זה ל-out variables שהקוד בהמשך משתמש בהם
-    warrantyStart       = extracted.warrantyStart       || null;
-    warrantyExpiresAt   = extracted.warrantyExpiresAt   || null;
-    autoDeleteAfter     = extracted.autoDeleteAfter     || null;
-    warrantyMonths      = null; // כרגע לא מחשבות חודשים גלויים
-
-  } catch (err) {
-    console.warn("auto extraction failed", err);
-    // במקרה של קריסה (לא אמור לקרות עכשיו), שלא ניתקע בלי המשתנים
-    warrantyStart     = null;
-    warrantyExpiresAt = null;
-    autoDeleteAfter   = null;
-    warrantyMonths    = null;
-  }
-}
-
-
-
-      // בניית האובייקט הסופי
+      // עכשיו בונים את הרשומה לשמירה
       const now = new Date();
       const uploadedAt = now.toLocaleString("he-IL", {
         dateStyle: "short",
         timeStyle: "short"
       });
-
       const fileObjectUrl = URL.createObjectURL(file);
 
       const newDoc = {
         id: "doc-" + Date.now(),
         title: fileName.replace(/\.[^/.]+$/, ""),
-        org: "לא ידוע",
+        org: "לא ידוע",        // בעתיד אפשר למלא לפי OCR "ספק"/"חברה"
         year: now.getFullYear(),
-        recipient: ["אני"],
+        recipient: ["אני"],    // למי שייך הבעלות
         category: [guessedCategory],
         sharedWith: [],
         fileUrl: fileObjectUrl,
@@ -1193,17 +1075,20 @@ if (guessedCategory === "אחריות") {
         originalFileName: fileName,
         _trashed: false,
 
+        // אחריות:
         warrantyStart,
         warrantyMonths,
         warrantyExpiresAt,
         autoDeleteAfter
       };
 
+      // שמירה למשתמש הנוכחי
       allDocsData.push(newDoc);
       setUserDocs(currentUser, allDocsData, allUsersData);
 
       showNotification(`המסמך נשמר בתיקייה: ${guessedCategory} ✔️`);
 
+      // נחזור למסך הבית ונראה עדכון
       renderHome();
       fileInput.value = "";
     } catch (err) {
@@ -1212,5 +1097,6 @@ if (guessedCategory === "אחריות") {
     }
   });
 
+  // רנדר ראשון
   renderHome();
 });
