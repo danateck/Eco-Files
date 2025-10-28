@@ -654,6 +654,16 @@
 </head>
 
 <body>
+
+<!-- pdf.js (for turning first page of PDF into canvas) -->
+<!-- Load pdf.js so window.pdfjsLib exists -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<!-- Load Tesseract.js so window.Tesseract exists -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.1.1/dist/tesseract.min.js"></script>
+
+
+
   <script>
     // אם אין יוזר מחובר - יזרוק לדף התחברות
     const currentUser = localStorage.getItem("docArchiveCurrentUser");
@@ -743,6 +753,19 @@
           <div class="category-view-header">
             <button class="back-button" id="backButton">⬅ חזרה</button>
             <h2 class="category-title" id="categoryTitle">שם תיקייה</h2>
+            <select id="sortSelect" style="margin-right:auto; font-size:.75rem; padding:.4rem .5rem; border-radius:6px;">
+              <option value="uploadedAt-desc">תאריך העלאה (חדש בהתחלה)</option>
+              <option value="uploadedAt-asc">תאריך העלאה (ישן בהתחלה)</option>
+              <option value="org-asc">לפי ארגון א→ת</option>
+              <option value="org-desc">לפי ארגון ת→א</option>
+              <option value="year-desc">שנה (חדש קודם)</option>
+              <option value="year-asc">שנה (ישן קודם)</option>
+              <option value="title-asc">שם קובץ א→ת</option>
+              <option value="title-desc">שם קובץ ת→א</option>
+              <option value="warrantyExpiresAt-asc">פג תוקף אחריות (מוקדם קודם)</option>
+              <option value="warrantyExpiresAt-desc">פג תוקף אחריות (מאוחר קודם)</option>
+            </select>
+
           </div>
 
           <div class="docs-list" id="docsList"></div>
@@ -825,7 +848,9 @@ if (mobileLogoutBtn) {
 
   </script>
 
-  <!-- הסקריפט הראשי של האפליקציה -->
-  <script type="module" src="./JS/main.js"></script>
+
+
+    <script type="module" src="./JS/main.js"></script>
+
 </body>
 </html>

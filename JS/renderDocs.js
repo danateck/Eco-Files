@@ -19,7 +19,7 @@ export const renderDocs = (docData, activeFilters, rerenderFilters, parentContai
             <div class="company-logo" style="margin-inline-start:auto;">
                 <a class="open-file-btn"
                    href="${docData.fileUrl}"
-                   target="_blank"
+                   target="_self"
                    rel="noopener noreferrer"
                    style="font-size:0.9rem; font-weight:600; color:#0e3535; text-decoration:underline;">
                     פתיחת קובץ
