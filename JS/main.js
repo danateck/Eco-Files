@@ -932,127 +932,72 @@ document.addEventListener("DOMContentLoaded", async () => {
       let autoDeleteAfter = null;
 
       if (guessedCategory === "אחריות") {
-        console.log("🟡 קובץ בקטגוריית 'אחריות' => מפעילים OCR וניתוח");
+    console.log("🔅 קובץ בקטגורית 'אחריות' => מפעילים OCR וניתוח");
 
-        // extracted ישמור את מה שנצליח לחלץ
-        let extracted = {
-          warrantyStart: null,
-          warrantyExpiresAt: null,
-          autoDeleteAfter: null
-        };
+    let extracted = {
+      warrantyStart: null,
+      warrantyExpiresAt: null,
+      autoDeleteAfter: null,
+    };
 
-        try {
-          let rawText = "";
-          try {
-            rawText = await file.text(); // עבור PDF עם שכבת טקסט אמיתית
-          } catch (e1) {
-            rawText = "";
-          }
+    // 1. אם זה PDF -> OCR PDF ראשון
+    if (file.type === "application/pdf") {
+      const ocrText = await extractTextFromPdfWithOcr(file);
+      window.__lastOcrText = ocrText; // <<< שמירה גלובלית כדי שנוכל לראות בקונסול
+      console.log("OCR raw text >>>", ocrText);
 
-          const mime = file.type?.toLowerCase() || "";
-          const isImage =
-            mime.startsWith("image/") ||
-            file.name.toLowerCase().match(/\.(jpg|jpeg|png|heic|webp|bmp)$/);
-          const isPdf = mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const dataFromText = extractWarrantyFromText(ocrText);
+      extracted = { ...extracted, ...dataFromText };
+    }
 
-          if (rawText && rawText.length > 20) {
-            // מצב 1: יש טקסט גולמי מהקובץ (חשבונית דיגיטלית)
-            extracted = extractWarrantyFromText(rawText);
+    // 2. אם זה תמונה -> OCR ישיר
+    if (
+      file.type.startsWith("image/")
+    ) {
+      const { data } = await Tesseract.recognize(file, "heb+eng", {
+        tessedit_pageseg_mode: 6,
+      });
+      const imgText = data?.text || "";
+      window.__lastOcrText = imgText;
+      console.log("OCR raw text (image) >>>", imgText);
 
-            // אם לא הצליח וזו כנראה PDF סרוקה, ננסה OCR של העמוד הראשון
-            if (
-              isPdf &&
-              (!extracted.warrantyStart && !extracted.warrantyExpiresAt)
-            ) {
-              const pdfOcrText = await extractTextFromPdfWithOcr(file);
-              if (pdfOcrText && pdfOcrText.trim().length > 0) {
-                const ocrExtracted = extractWarrantyFromText(pdfOcrText);
-                if (
-                  (ocrExtracted.warrantyStart && !extracted.warrantyStart) ||
-                  (ocrExtracted.warrantyExpiresAt && !extracted.warrantyExpiresAt)
-                ) {
-                  extracted = ocrExtracted;
-                }
-              }
-            }
+      const dataFromText = extractWarrantyFromText(imgText);
+      extracted = { ...extracted, ...dataFromText };
+    }
 
-          } else if (isImage) {
-            // מצב 2: תמונה => OCR ישיר
-            const ocrText = await runOCR(file);
-            if (ocrText && ocrText.trim().length > 0) {
-              extracted = extractWarrantyFromText(ocrText);
-            }
+    // 3. fallback: אם זה קובץ טקסטואלי (docx/pdf טקסט חי בלי OCR)
+    if (!window.__lastOcrText) {
+      const buf = await file.arrayBuffer().catch(() => null);
+      if (buf) {
+        const txt = new TextDecoder("utf-8").decode(buf);
+        window.__lastOcrText = txt;
+        console.log("Raw text fallback >>>", txt);
 
-          } else if (isPdf) {
-            // מצב 3: PDF סרוק => OCR מהעמוד הראשון
-            const pdfOcrText = await extractTextFromPdfWithOcr(file);
-            if (pdfOcrText && pdfOcrText.trim().length > 0) {
-              extracted = extractWarrantyFromText(pdfOcrText);
-            }
-
-          } else {
-            // fallback אחרון: arrayBuffer decode
-            const buf = await file.arrayBuffer();
-            const decoder = new TextDecoder("utf-8");
-            const bufText = decoder.decode(buf || new ArrayBuffer());
-            if (bufText && bufText.trim().length > 0) {
-              extracted = extractWarrantyFromText(bufText);
-            }
-          }
-
-          // אם אין עדיין תאריכים בכלל: נשאל אותך ידנית (מה שחשוב לך!)
-          if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
-            const manualData = fallbackAskWarrantyDetails();
-            if (manualData.warrantyStart) {
-              extracted.warrantyStart = manualData.warrantyStart;
-            }
-            if (manualData.warrantyExpiresAt) {
-              extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
-            }
-            if (manualData.autoDeleteAfter) {
-              extracted.autoDeleteAfter = manualData.autoDeleteAfter;
-            }
-          }
-
-          // אם יש רק תאריך קנייה ואין "תוקף אחריות עד" → נניח שנה אחריות
-          if (
-            extracted.warrantyStart &&
-            !extracted.warrantyExpiresAt &&
-            /^\d{4}-\d{2}-\d{2}$/.test(extracted.warrantyStart)
-          ) {
-            const guessEnd = new Date(extracted.warrantyStart + "T00:00:00");
-            guessEnd.setMonth(guessEnd.getMonth() + 12);
-            const yyyy = guessEnd.getFullYear();
-            const mm = String(guessEnd.getMonth() + 1).padStart(2, "0");
-            const dd = String(guessEnd.getDate()).padStart(2, "0");
-            extracted.warrantyExpiresAt = `${yyyy}-${mm}-${dd}`;
-          }
-
-          // אם יש "תוקף אחריות עד" ואין autoDeleteAfter → נוסיף +24 חודשים
-          if (
-            extracted.warrantyExpiresAt &&
-            !extracted.autoDeleteAfter &&
-            /^\d{4}-\d{2}-\d{2}$/.test(extracted.warrantyExpiresAt)
-          ) {
-            const delDate = new Date(extracted.warrantyExpiresAt + "T00:00:00");
-            delDate.setMonth(delDate.getMonth() + 24);
-            extracted.autoDeleteAfter = delDate.toISOString().split("T")[0];
-          }
-
-          // מיפוי הסופי למשתנים שנשמור בדוקומנט
-          warrantyStart       = extracted.warrantyStart       || null;
-          warrantyExpiresAt   = extracted.warrantyExpiresAt   || null;
-          autoDeleteAfter     = extracted.autoDeleteAfter     || null;
-          warrantyMonths      = null; // לא שואלים כמה חודשים, לפי הבקשה שלך
-
-        } catch (err) {
-          console.warn("auto extraction failed", err);
-          warrantyStart     = null;
-          warrantyExpiresAt = null;
-          autoDeleteAfter   = null;
-          warrantyMonths    = null;
-        }
+        const dataFromText = extractWarrantyFromText(txt);
+        extracted = { ...extracted, ...dataFromText };
       }
+    }
+
+    // 4. אם עדיין אין לנו כלום מ-OCR -> נשאל ידנית
+    if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
+      const manualData = fallbackAskWarrantyDetails(); // פותח prompt
+      if (manualData.warrantyStart) {
+        extracted.warrantyStart = manualData.warrantyStart;
+      }
+      if (manualData.warrantyExpiresAt) {
+        extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
+      }
+      if (manualData.autoDeleteAfter) {
+        extracted.autoDeleteAfter = manualData.autoDeleteAfter;
+      }
+    }
+
+    // 5. נשמור את מה שיצא ב-extracted בשדות שנשמרים במסמך
+    warrantyStart     = extracted.warrantyStart || null;
+    warrantyExpiresAt = extracted.warrantyExpiresAt || null;
+    autoDeleteAfter   = extracted.autoDeleteAfter || null;
+}
+
 
       // עכשיו בונים את הרשומה לשמירה
       const now = new Date();
