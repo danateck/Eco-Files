@@ -271,7 +271,7 @@ async function extractTextFromPdfWithOcr(file) {
 // 3.2 חילוץ אחריות מתמליל (טקסט גולמי)
 // -------------------------------------------------
 function extractWarrantyFromText(rawBufferMaybe) {
-  // --- שלב 0: להכין טקסט ---
+  // --- שלב 0: להכין טקסט מלא + lowercase לעבודה regex ---
   let rawText = "";
   if (typeof rawBufferMaybe === "string") {
     rawText = rawBufferMaybe;
@@ -281,13 +281,12 @@ function extractWarrantyFromText(rawBufferMaybe) {
     rawText = String(rawBufferMaybe || "");
   }
 
-  // נשמור עותק מקורי (לוג בהמשך אם נרצה), וגם גרסה מפושטת
+  // נשמור גם גרסה מנוקה וגם lowercase
   const cleaned = rawText.replace(/\s+/g, " ").trim();
   const lower   = cleaned.toLowerCase();
 
   // --- עוזרים פנימיים ---
 
-  // בדיקת yyy-mm-dd חוקי
   function isValidYMD(ymd) {
     if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
     const [Y, M, D] = ymd.split("-").map(n => parseInt(n, 10));
@@ -297,7 +296,6 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return !Number.isNaN(dt.getTime());
   }
 
-  // מיפוי שמות חודשים לטווחים כמו "15 פברואר 2025"
   const monthMap = {
     jan:"01", january:"01", feb:"02", february:"02", mar:"03", march:"03",
     apr:"04", april:"04", may:"05", jun:"06", june:"06", jul:"07", july:"07",
@@ -309,11 +307,10 @@ function extractWarrantyFromText(rawBufferMaybe) {
     נובמבר:"11", דצמבר:"12",
   };
 
-  // הופך כל מחרוזת תאריך שנראית כמו 16/06/2025, או 16 יוני 2025, או 2025-06-16 -> yyyy-mm-dd
+  // הופך "31/08/2022", "31-08-22", "31 אוגוסט 2022", "2022-08-31" => "2022-08-31"
   function normalizeDateGuess(str) {
     if (!str) return null;
 
-    // ננקה תווים
     let s = str
       .replace(/[,]/g, " ")
       .replace(/[.\/\\\-]+/g, "-")
@@ -323,7 +320,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
 
     const tokens = s.split("-");
 
-    // מילולי (16 יוני 2025, 16 jun 2025)
+    // מילולי: 31 אוגוסט 2022 / 31 aug 2022
     if (tokens.some(t => monthMap[t])) {
       let day = null, mon = null, year = null;
       for (const t of tokens) {
@@ -386,13 +383,9 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return null;
   }
 
-  // מחפש תאריך אחרי ביטוי מפתח ספציפי (כמו "תאריך חשבונית")
+  // מחפש "מילת מפתח + תאריך"
   function findDateAfterKeywords(keywords, textToSearch) {
     for (const kw of keywords) {
-      // נבנה regex: מילה/ביטוי ואחריו איזה רווחים ואז תאריך
-      // דוגמא תופסת:
-      // "תאריך חשבונית 16/06/2025"
-      // "invoice date: 10-10-23"
       const pattern =
         kw +
         "[ \\t:]*" +
@@ -407,13 +400,15 @@ function extractWarrantyFromText(rawBufferMaybe) {
       const m = textToSearch.match(re);
       if (m && m[1]) {
         const guess = normalizeDateGuess(m[1]);
-        if (isValidYMD(guess)) return guess;
+        if (isValidYMD(guess)) {
+          return guess;
+        }
       }
     }
     return null;
   }
 
-  // 1. ננסה תאריך קנייה / רכישה / חשבונית / משלוח / אספקה וכו'
+  // שלב 1: תאריך קנייה/מסירה/חשבונית לפי מילות מפתח
   let warrantyStart = findDateAfterKeywords([
     "תאריך\\s*ק.?נ.?י.?ה",
     "תאריך\\s*רכישה",
@@ -424,19 +419,20 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "תאריך\\s*חשבונית",
     "ת\\.?\\s*חשבונית",
     "תאריך\\s*תעודת\\s*משלוח",
+    "תעודת\\s*משלוח\\s*מספר", // לפעמים זה מופיע ככותרת בראש
     "תאריך\\s*משלוח",
     "תאריך\\s*אספקה",
     "תאריך\\s*מסירה",
+    "נמסר\\s*בתאריך",
     "נרכש\\s*בתאריך",
-    "invoice\\s*date",
     "purchase\\s*date",
     "date\\s*of\\s*purchase",
-    "buy\\s*date",
+    "invoice\\s*date",
     "invoice\\s*#?date",
-    "bill\\s*date"
+    "buy\\s*date"
   ], lower);
 
-  // 2. ננסה למצוא תאריך אחריות / תוקף אחריות
+  // שלב 2: תוקף אחריות / אחריות עד
   let warrantyExpiresAt = findDateAfterKeywords([
     "תוקף\\s*אחריות",
     "תוקף\\s*האחריות",
@@ -451,11 +447,32 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "expiration\\s*date"
   ], lower);
 
-  // 3. Fallback חכם:
-  // אם עדיין אין לנו warrantyStart:
-  // נבדוק אם בכל המסמך יש בדיוק תאריך אחד ברור. אם כן - ניקח אותו.
+  // שלב 3: אם עדיין אין warrantyStart,
+  // תני עדיפות לתאריך שמופיע ממש בהתחלה של המסמך (למעלה במסמך).
   if (!warrantyStart) {
-    // נמצא את *כל* התאריכים בטקסט
+    const headChunk = lower.slice(0, 300); // רק ההתחלה
+    const headDateRegex = new RegExp(
+      "(" +
+        "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
+        "|" +
+        "\\d{4}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{1,2}" +
+        "|" +
+        "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +
+      ")",
+      "i"
+    );
+    const mHead = headChunk.match(headDateRegex);
+    if (mHead && mHead[1]) {
+      const guess = normalizeDateGuess(mHead[1]);
+      if (isValidYMD(guess)) {
+        warrantyStart = guess;
+      }
+    }
+  }
+
+  // שלב 4: אם עדיין אין warrantyStart,
+  // נעשה fallback זהיר: אם יש רק תאריך תקין אחד בכל המסמך -> קחי אותו.
+  if (!warrantyStart) {
     const anyDateRegex = new RegExp(
       "(" +
         "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
@@ -467,7 +484,6 @@ function extractWarrantyFromText(rawBufferMaybe) {
       "ig"
     );
     const matches = [...lower.matchAll(anyDateRegex)].map(m => m[1]);
-    // נעביר דרך normalizeDateGuess ונסנן null
     const normalized = [];
     for (const candidate of matches) {
       const ymd = normalizeDateGuess(candidate);
@@ -475,14 +491,13 @@ function extractWarrantyFromText(rawBufferMaybe) {
         normalized.push(ymd);
       }
     }
-    // אם יש רק אחד ייחודי → ניקח אותו בתור תאריך קנייה
     const unique = [...new Set(normalized)];
     if (unique.length === 1) {
       warrantyStart = unique[0];
     }
   }
 
-  // 4. אם אין סוף אחריות אבל יש תאריך קנייה -> נניח שנה
+  // שלב 5: אין תוקף אחריות אבל יש תאריך התחלה -> נניח שנה
   if (!warrantyExpiresAt && warrantyStart && isValidYMD(warrantyStart)) {
     const [Y,M,D] = warrantyStart.split("-");
     const startDate = new Date(`${Y}-${M}-${D}T00:00:00`);
@@ -496,7 +511,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // 5. autoDeleteAfter = שנתיים אחרי סוף האחריות
+  // שלב 6: autoDeleteAfter = שנתיים אחרי סוף האחריות
   let autoDeleteAfter = null;
   if (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) {
     const [Y2,M2,D2] = warrantyExpiresAt.split("-");
