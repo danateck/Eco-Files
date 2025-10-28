@@ -565,21 +565,19 @@
 </head>
 
 <body>
-
-<!-- PDF.js (חייב לפני main.js) -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.min.js"></script>
+<!-- PDF.js מהפרויקט המקומי שלנו -->
+<script src="./libs/pdf.min.js"></script>
+<script src="./libs/pdf.worker.min.js"></script>
 <script>
-  // לוודא שה-worker מוגדר
-  if (window.pdfjsLib) {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.min.js";
-    console.log("✅ pdfjsLib loaded", window.pdfjsLib);
+  if (window['pdfjsLib']) {
+    window['pdfjsLib'].GlobalWorkerOptions.workerSrc = "./libs/pdf.worker.min.js";
+    console.log("✅ pdfjsLib loaded (local)", window['pdfjsLib'].version || "no version field but loaded");
   } else {
-    console.warn("⚠️ pdfjsLib failed to load");
+    console.warn("⚠️ pdfjsLib failed to load (local)");
   }
 </script>
 
-<!-- Tesseract.js (ל-OCR) -->
+<!-- Tesseract.js ל-OCR -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
   if (window.Tesseract) {
@@ -588,6 +586,7 @@
     console.warn("⚠️ Tesseract failed to load");
   }
 </script>
+
 
 
   <script>
