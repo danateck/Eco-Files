@@ -54,20 +54,57 @@
       position: relative;
     }
 
-    /* ----- SIDEBAR ----- */
-    .sidebar {
-      width: 240px;
-      background: linear-gradient(180deg, var(--bg-sidebar-from) 0%, var(--bg-sidebar-to) 100%);
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 1rem 1rem 0.75rem;
-      box-shadow: 4px 0 16px rgba(0,0,0,0.3);
+.sidebar {
+  background: linear-gradient(180deg, var(--bg-sidebar-from) 0%, var(--bg-sidebar-to) 100%);
+  color: #fff;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  height: 100vh;
+  position: relative;
+  box-shadow: 4px 0 16px rgba(0,0,0,0.3);
+  padding: 1rem 1rem 0;
+  overflow-y: auto; /* allows scrolling if sidebar content is tall */
+}
 
-      /* אנימציה/מעבר חלק */
-      transition: transform .25s ease-in-out;
-    }
+/* make sure all internal sections take natural space */
+.sidebar > div {
+  flex-shrink: 0;
+}
+
+/* this sticks logout to the exact bottom edge always */
+.sidebar-bottom {
+  position: absolute;
+  bottom: 1.56rem;
+  left: 0;
+  width: 100%;
+  padding: 0 1rem;
+  box-sizing: border-box;
+  border-top: 1px solid rgba(255,255,255,0.12);
+}
+
+/* logout button styling */
+.logout-btn {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-weight: 600;
+  font-size: .9rem;
+  padding: .8rem .75rem;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0,0,0,.4);
+  transition: background .18s, filter .18s;
+}
+.logout-btn:hover {
+  background: rgba(255,255,255,0.18);
+  filter: brightness(1.05);
+}
+
+
+
 
     /* מצב מובייל: הופך למגירה נשלפת */
     @media (max-width: 760px) {
@@ -358,25 +395,61 @@
       gap: .5rem;
     }
 
-    .folder-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(170px,1fr));
-      gap: 1rem;
-    }
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  align-items: start;
+  justify-items: center;
+}
 
-    .folder-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-soft);
-      border-radius: var(--radius-md);
-      padding: .9rem .8rem;
-      box-shadow: var(--shadow-card);
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      gap: .5rem;
-      transition: transform .18s, box-shadow .18s;
-      text-align: right;
-    }
+
+.folder-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 2.2rem 3rem; /* more padding for bigger feel */
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+  transition: transform .18s, box-shadow .18s;
+  text-align: right;
+  width: 100%;
+  max-width: 320px; /* keeps them from becoming too huge on wide screens */
+}
+
+
+
+/* tablet-ish */
+@media (min-width: 500px) {
+  .folder-grid {
+    grid-template-columns: repeat(3, 1fr); /* 3 per row */
+  }
+}
+
+/* small laptop */
+@media (min-width: 700px) {
+  .folder-grid {
+    grid-template-columns: repeat(4, 1fr); /* 4 per row */
+  }
+}
+
+/* desktop */
+@media (min-width: 1000px) {
+  .folder-grid {
+    grid-template-columns: repeat(5, 1fr); /* 5 per row */
+  }
+}
+
+/* big desktop / wide screen */
+@media (min-width: 1300px) {
+  .folder-grid {
+    grid-template-columns: repeat(6, 1fr); /* 6 per row */
+  }
+}
+
 
     .folder-card:hover {
       transform: translateY(-2px);
@@ -387,7 +460,7 @@
       width: 40px;
       height: 32px;
       border-radius: 6px;
-      background: linear-gradient(135deg,#ffe28a 0%,#ffc94d 100%);
+      background: linear-gradient(135deg,#fdd868 0%,#ffc94d 100%);
       box-shadow: 0 6px 12px rgba(0,0,0,0.15);
       position: relative;
     }
@@ -399,7 +472,7 @@
       width: 18px;
       height: 8px;
       border-radius: 3px 3px 0 0;
-      background: linear-gradient(135deg,#fff3b8 0%,#ffe694 100%);
+      background: linear-gradient(135deg,#efe5b6 0%,#ffe694 100%);
       box-shadow: 0 3px 6px rgba(0,0,0,0.15);
     }
 
@@ -408,6 +481,8 @@
       font-weight: 600;
       color: var(--text-dark);
       line-height: 1.3;
+       font-family: "Rubik", system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      
     }
 
     .category-view-header {
@@ -551,7 +626,7 @@
   display: none;
 }
 
-@media (max-width: 760px) {
+/* @media (max-width: 760px) {
   .mobile-logout {
     display: inline-block;
     background: var(--grad-btn);
@@ -564,7 +639,7 @@
     cursor: pointer;
     box-shadow: var(--shadow-btn);
   }
-}
+} */
 
   </style>
 </head>
