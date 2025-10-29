@@ -1145,43 +1145,66 @@ function openSharedView() {
 
 
     const raw = (emailInput?.value || "");
-    // שלח הזמנה
-    const inviteId = t.getAttribute?.("data-invite");
-    if (inviteId) {
-      const emailInput = listRow.querySelector(`input[placeholder="הוסף מייל לשיתוף"][data-email="${inviteId}"]`);
-      const targetEmail = raw.trim().toLowerCase(); // חשוב!
-      if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
 
-      const targetUname = findUsernameByEmail(allUsersData, targetEmail);
-      if (!targetUname) { showNotification("אין אדם כזה (מייל לא קיים במערכת)", true); return; }
+    // --- שלח הזמנה ---
+const inviteId = t.getAttribute?.("data-invite");
+if (inviteId) {
+  // נמצא את השורה של הכפתור ואז את שדה המייל בשורה הזו
+  const row = t.closest("div");
+  const emailEl =
+    row?.querySelector('input[data-email]') ||
+    listRow.querySelector(`input[data-email="${inviteId}"]`);
 
-      // לא מזמינים את עצמי שוב
-      if (targetEmail.toLowerCase() === myEmail.toLowerCase()) {
-        showNotification("את כבר חברה בתיקייה הזו", true); return;
-      }
+  if (!emailEl) {
+    showNotification("לא נמצא שדה מייל בשורה", true);
+    return;
+  }
 
-      // הוספת בקשה יוצאת אצלי
-      me.outgoingShareRequests.push({
-        folderId: inviteId,
-        folderName: me.sharedFolders[inviteId]?.name || "",
-        toEmail: targetEmail,
-        status: "pending"
-      });
+  // נרמול המייל (trim + lower)
+  const targetEmail = (emailEl.value || "").trim().toLowerCase();
+  if (!targetEmail) {
+    showNotification("הקלידי מייל של הנמען", true);
+    return;
+  }
 
-      // הוספת בקשה נכנסת אצלו
-      ensureUserSharedFields(allUsersData, targetUname);
-      allUsersData[targetUname].incomingShareRequests.push({
-        folderId: inviteId,
-        folderName: me.sharedFolders[inviteId]?.name || "",
-        fromEmail: myEmail,
-        status: "pending"
-      });
+  // חיפוש משתמש לפי מייל (case-insensitive)
+  const targetUname = findUsernameByEmail(allUsersData, targetEmail);
+  if (!targetUname) {
+    showNotification("אין אדם כזה (המייל לא קיים במערכת)", true);
+    return;
+  }
 
-      saveAllUsersDataToStorage(allUsersData);
-      showNotification("הזמנה נשלחה (ממתין לאישור)");
-      emailInput.value = "";
-      return;
-    }
+  // לא להזמין את עצמי
+  const myEmail = (allUsersData[userNow].email || userNow).toLowerCase();
+  if (targetEmail === myEmail) {
+    showNotification("את כבר חברה בתיקייה הזו", true);
+    return;
+  }
+
+  // הוספת בקשה יוצאת אצלי
+  const me = allUsersData[userNow];
+  me.outgoingShareRequests.push({
+    folderId: inviteId,
+    folderName: me.sharedFolders[inviteId]?.name || "",
+    toEmail: targetEmail,
+    status: "pending"
+  });
+
+  // הוספת בקשה נכנסת אצל הנמען
+  ensureUserSharedFields(allUsersData, targetUname);
+  allUsersData[targetUname].incomingShareRequests.push({
+    folderId: inviteId,
+    folderName: me.sharedFolders[inviteId]?.name || "",
+    fromEmail: myEmail,
+    status: "pending"
+  });
+
+  saveAllUsersDataToStorage(allUsersData);
+  showNotification("הזמנה נשלחה (ממתינה לאישור)");
+  emailEl.value = "";
+  return;
+}
+
   });
 
   // אישור/דחייה של בקשות
