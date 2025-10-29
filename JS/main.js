@@ -1,8 +1,77 @@
-// main.js (גרסה מתוקנת לבעיות: פתיחת קובץ, סל מחזור, העלאה ושמירה)
+// main.js - גרסה עם IndexedDB לשמירת קבצים גדולים בצורה יציבה
 
-// -------------------------------------------------
-// 1. הגדרות קטגוריות ומילות מפתח
-// -------------------------------------------------
+/*************************
+ * 0. IndexedDB helpers  *
+ *************************/
+
+// נפתח/ניצור DB בשם "docArchiveDB" עם טבלה "files"
+// בקי לכל קובץ: id (המזהה של הדוקומנט)
+// value שמור זה ה-base64 (dataURL)
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("docArchiveDB", 1);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains("files")) {
+        db.createObjectStore("files", { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onerror = (e) => {
+      reject(e.target.error);
+    };
+  });
+}
+
+// שמירת קובץ (base64) ב-IndexedDB
+async function saveFileToDB(docId, dataUrl) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(["files"], "readwrite");
+    const store = tx.objectStore("files");
+    store.put({ id: docId, dataUrl });
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// שליפה של קובץ מה-DB לפי docId
+async function loadFileFromDB(docId) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(["files"], "readonly");
+    const store = tx.objectStore("files");
+    const req = store.get(docId);
+    req.onsuccess = () => {
+      if (req.result) resolve(req.result.dataUrl);
+      else resolve(null);
+    };
+    req.onerror = (e) => {
+      reject(e.target.error);
+    };
+  });
+}
+
+// מחיקה של קובץ מה-DB (אם מוחקים לצמיתות)
+async function deleteFileFromDB(docId) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(["files"], "readwrite");
+    const store = tx.objectStore("files");
+    store.delete(docId);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+
+/*************************
+ * 1. קטגוריות / מילות מפתח
+ *************************/
+
 const CATEGORY_KEYWORDS = {
   "כלכלה": [
     "חשבון","חשבונית","חשבונית מס","חשבוניתמס","חשבוניתמס קבלה","קבלה","קבלות",
@@ -21,7 +90,6 @@ const CATEGORY_KEYWORDS = {
     "ביטוח רכב","ביטוח רכב חובה","ביטוח חובה","ביטוח מקיף","ביטוחדירה","ביטוח דירה","פרמיה","פרמיית ביטוח",
     "פוליסה","פוליסת ביטוח","פרמיה לתשלום","חוב לתשלום","הודעת חיוב"
   ],
-
   "רפואה": [
     "רפואה","רפואי","רפואית","מסמך רפואי","מכתב רפואי","דוח רפואי",
     "מרפאה","מרפאה מומחה","מרפאת מומחים","מרפאת נשים","מרפאת ילדים",
@@ -40,11 +108,9 @@ const CATEGORY_KEYWORDS = {
     "אישור מחלה","אישור מחלה לעבודה","אישור מחלה לבית ספר",
     "אישור רפואי","אישור כשירות","אישור כשירות רפואית",
     "טופס התחייבות","טופס 17","טופס17","התחייבות","התחיבות","התחיבות קופה","התחייבות קופה",
-    "מרשם תרופות","רשימת תרופות","טיפול תרופתי",
     "בדיקת קורונה","קורונה חיובי","קורונה שלילי","PCR","covid","בדיקת הריון","US","אולטרסאונד",
     "נכות רפואית","ועדה רפואית","קביעת נכות"
   ],
-
   "עבודה": [
     "חוזה העסקה","חוזה העסקה אישי","חוזה עבודה","חוזה העסקה לעובד","חוזה העסקה לעובדת",
     "מכתב קבלה לעבודה","קבלה לעבודה","מכתב התחלת עבודה","ברוכים הבאים לחברה",
@@ -56,7 +122,6 @@ const CATEGORY_KEYWORDS = {
     "סיום העסקה","סיום יחסי עובד מעביד","יחסי עובד מעביד","עובד","מעסיק","מעסיקה",
     "הערכת עובד","הערכת ביצועים","דו\"ח ביצועים","חוות דעת מנהל","משוב עובד"
   ],
-
   "בית": [
     "חוזה שכירות","חוזהשכירות","הסכם שכירות","הסכםשכירות","שוכר","שוכרת","שוכרים","משכיר","משכירה","דירה",
     "נכס","נכס מגורים","כתובת מגורים","מגורים קבועים","עדכון כתובת","הצהרת מגורים",
@@ -65,11 +130,9 @@ const CATEGORY_KEYWORDS = {
     "גז","חברת גז","קריאת מונה גז","מים","תאגיד מים","חשבון מים","מים חודשי",
     "אינטרנט","ספק אינטרנט","ראוטר","נתב","חשבונית אינטרנט","הוט","יס","HOT","yes","סיבים","סיבים אופטיים",
     "ארנונה","ארנונה מגורים","חוב ארנונה","דרישת תשלום ארנונה","ארנונה עירייה","עירייה",
-    "העברת חשמל","העברת מים","העברת גז","בעלות נכס","נכס על שמי","נכס על שמך",
     "גירושין","הסכם גירושין","צו גירושין","משמורת","צו משמורת","משמורת ילדים",
     "הסדרי ראייה","הסדרי ראיה","מזונות","דמי מזונות","תשלום מזונות","משפחה","משפחתי","הורה משמורן","הורה משמורנית"
   ],
-
   "אחריות": [
     "אחריות","אחריות למוצר","אחריות מוצר","אחריות יצרן","אחריות יבואן","אחריות יבואן רשמי",
     "אחריות יבואן מורשה","אחריות לשנה","אחריות לשנתיים","אחריות ל12 חודשים","אחריות ל-12 חודשים",
@@ -79,19 +142,16 @@ const CATEGORY_KEYWORDS = {
     "הוכחת קנייה","הוכחת קניה","אישור רכישה","חשבונית קנייה","תעודת משלוח","תעודת מסירה",
     "מספר סידורי","serial number","imei","rma","repair ticket","repair order"
   ],
-
   "תעודות": [
     "תעודת זהות","ת.ז","תז","תעודת לידה","ספח","ספח תעודת זהות","ספח ת.ז",
     "רישיון נהיגה","רישיון רכב","דרכון","passport","דרכון ביומטרי",
     "תעודת התחסנות","כרטיס חיסונים","אישור לימודים","אישור סטודנט","אישור תלמיד",
     "אישור מגורים","אישור כתובת","אישור תושבות"
   ],
-
   "עסק": [
     "עוסק מורשה","עוסק פטור","תיק עוסק","חשבונית מס","דיווח מע\"מ","עוסק מורשה פעיל",
     "חברה בע\"מ","ח.פ","מספר עוסק","הצעת מחיר","חשבונית ללקוח","ספק"
   ],
-
   "אחר": []
 };
 
@@ -106,9 +166,10 @@ const CATEGORIES = [
   "אחר"
 ];
 
-// -------------------------------------------------
-// 2. LocalStorage helpers
-// -------------------------------------------------
+/*********************
+ * 2. LocalStorage   *
+ *********************/
+
 const STORAGE_KEY = "docArchiveUsers";
 const CURRENT_USER_KEY = "docArchiveCurrentUser";
 
@@ -143,9 +204,10 @@ function setUserDocs(username, docsArray, allUsersData) {
   saveAllUsersDataToStorage(allUsersData);
 }
 
-// -------------------------------------------------
-// 3. כלים
-// -------------------------------------------------
+/*********************
+ * 3. Utilities      *
+ *********************/
+
 function normalizeWord(word) {
   if (!word) return "";
   let w = word.trim().toLowerCase();
@@ -185,10 +247,9 @@ function guessCategoryForFileNameOnly(fileName) {
   return best;
 }
 
-// OCR עמוד ראשון של PDF
+// OCR PDF
 async function extractTextFromPdfWithOcr(file) {
   if (!window.pdfjsLib) return "";
-
   const arrayBuf = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuf }).promise;
   const page = await pdf.getPage(1);
@@ -206,11 +267,10 @@ async function extractTextFromPdfWithOcr(file) {
   const { data } = await window.Tesseract.recognize(blob, "heb+eng", {
     tessedit_pageseg_mode: 6,
   });
-
   return data && data.text ? data.text : "";
 }
 
-// חילוץ אחריות
+// חילוץ אחריות אוטומטי
 function extractWarrantyFromText(rawTextInput) {
   let rawText = "";
   if (typeof rawTextInput === "string") rawText = rawTextInput;
@@ -267,7 +327,7 @@ function extractWarrantyFromText(rawTextInput) {
       }
       if (day && mon && year) {
         const ymd = `${year}-${mon}-${day}`;
-        if (isValidYMD(ymd)) return ymd;
+        return isValidYMD(ymd) ? ymd : null;
       }
     }
 
@@ -324,7 +384,9 @@ function extractWarrantyFromText(rawTextInput) {
       const m = textToSearch.match(re);
       if (m && m[1]) {
         const guess = normalizeDateGuess(m[1]);
-        if (guess && isValidYMD(guess)) return guess;
+        if (guess && isValidYMD(guess)) {
+          return guess;
+        }
       }
     }
     return null;
@@ -340,7 +402,6 @@ function extractWarrantyFromText(rawTextInput) {
     "תאריך\\s*חשבונית",
     "ת\\.?\\s*חשבונית",
     "תאריך\\s*תעודת\\s*משלוח",
-    "תעודת\\s*משלוח\\s*מספר",
     "תאריך\\s*משלוח",
     "תאריך\\s*אספקה",
     "תאריך\\s*מסירה",
@@ -349,7 +410,6 @@ function extractWarrantyFromText(rawTextInput) {
     "purchase\\s*date",
     "date\\s*of\\s*purchase",
     "invoice\\s*date",
-    "invoice\\s*#?date",
     "buy\\s*date"
   ], lower);
 
@@ -409,7 +469,7 @@ function extractWarrantyFromText(rawTextInput) {
     }
   }
 
-  // מחיקה אחרי 7 שנים מתאריך הקנייה
+  // מחיקה אחרי 7 שנים מרגע הקנייה
   let autoDeleteAfter = null;
   if (warrantyStart && isValidYMD(warrantyStart)) {
     const [yS,mS,dS] = warrantyStart.split("-");
@@ -431,7 +491,7 @@ function extractWarrantyFromText(rawTextInput) {
   };
 }
 
-// fallback ידני לתאריכי אחריות
+// fallback ידני לתאריכים
 function fallbackAskWarrantyDetails() {
   const normalizeManualDate = (str) => {
     if (!str) return null;
@@ -486,10 +546,10 @@ function showNotification(message, isError = false) {
   box.className = "notification show" + (isError ? " error" : "");
   setTimeout(() => {
     box.className = "notification hidden";
-  }, 3000);
+  }, 4000);
 }
 
-// מחיקה אוטומטית למסמכי אחריות שפג תוקפם
+// ניקוי אוטומטי לאחר שפג תאריך המחיקה
 function purgeExpiredWarranties(docsArray) {
   const today = new Date();
   let changed = false;
@@ -498,6 +558,8 @@ function purgeExpiredWarranties(docsArray) {
     if (d.category && d.category.includes("אחריות") && d.autoDeleteAfter) {
       const deleteOn = new Date(d.autoDeleteAfter + "T00:00:00");
       if (today > deleteOn) {
+        // גם מוחקים את הקובץ בפועל מה-DB
+        deleteFileFromDB(d.id).catch(() => {});
         docsArray.splice(i, 1);
         changed = true;
       }
@@ -506,7 +568,7 @@ function purgeExpiredWarranties(docsArray) {
   return changed;
 }
 
-// מיון
+// מיון לתצוגה
 let currentSortField = "uploadedAt";
 let currentSortDir   = "desc";
 
@@ -546,15 +608,19 @@ function sortDocs(docsArray) {
   return arr;
 }
 
-// -------------------------------------------------
-// 4. אפליקציה
-// -------------------------------------------------
+/*********************
+ * 4. אפליקציה / UI  *
+ *********************/
+
 document.addEventListener("DOMContentLoaded", async () => {
   const currentUser   = getCurrentUser();
   if (!currentUser) {
-    window.location.href = "login.html";
-    return;
+    // אם אין משתמש שמור, אפשר פשוט לבחור "ברירת מחדל"
+    // או להפנות למסך התחברות אם יש לך אחד
+    localStorage.setItem(CURRENT_USER_KEY, "defaultUser");
   }
+
+  const userNow = getCurrentUser() || "defaultUser";
 
   const homeView      = document.getElementById("homeView");
   const folderGrid    = document.getElementById("folderGrid");
@@ -583,22 +649,23 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let currentlyEditingDocId = null;
 
+  // טוענים נתונים מה- localStorage
   let allUsersData = loadAllUsersDataFromStorage();
-  let allDocsData  = getUserDocs(currentUser, allUsersData);
+  let allDocsData  = getUserDocs(userNow, allUsersData);
 
   if (!allDocsData || allDocsData.length === 0) {
     allDocsData = [];
-    setUserDocs(currentUser, allDocsData, allUsersData);
+    setUserDocs(userNow, allDocsData, allUsersData);
   }
 
-  // מנקים מסמכי אחריות שפג תוקפם
+  // מסירים אחריות שפג תוקפה
   const removed = purgeExpiredWarranties(allDocsData);
   if (removed) {
-    setUserDocs(currentUser, allDocsData, allUsersData);
+    setUserDocs(userNow, allDocsData, allUsersData);
     showNotification("מסמכי אחריות ישנים הוסרו אוטומטית");
   }
 
-  // מציגי כפתורי תיקיות בדף הבית
+  // כפתורי התיקיות בעמוד הבית
   function renderFolderItem(categoryName) {
     const folder = document.createElement("button");
     folder.className = "folder-card";
@@ -626,7 +693,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     categoryView.classList.add("hidden");
   }
 
-  // בונה כרטיס למסמך בודד
   function buildDocCard(doc, mode) {
     const card = document.createElement("div");
     card.className = "doc-card";
@@ -643,7 +709,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         <span>הועלה ב: ${doc.uploadedAt || "-"}</span>
       `;
 
-    // תמיד מציגים כפתור פתיחת קובץ
     const openFileButtonHtml = `
       <button class="doc-open-link"
               data-open-id="${doc.id}">
@@ -669,7 +734,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     const actions = card.querySelector(".doc-actions");
 
     if (mode !== "recycle") {
-      // כפתור עריכה
       const editBtn = document.createElement("button");
       editBtn.className = "doc-action-btn";
       editBtn.textContent = "עריכה ✏️";
@@ -678,14 +742,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       actions.appendChild(editBtn);
 
-      // כפתור סל מחזור
       const trashBtn = document.createElement("button");
       trashBtn.className = "doc-action-btn danger";
       trashBtn.textContent = "העבר לסל מחזור 🗑️";
       trashBtn.addEventListener("click", () => {
         markDocTrashed(doc.id, true);
 
-        // נשמור ונתרענן לפי הקטגוריה הנוכחית
         const currentCat = categoryTitle.textContent;
         if (currentCat === "אחסון משותף") {
           openSharedView();
@@ -698,7 +760,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       actions.appendChild(trashBtn);
 
     } else {
-      // מצב סל מחזור: שחזור ומחיקה לצמיתות
       const restoreBtn = document.createElement("button");
       restoreBtn.className = "doc-action-btn restore";
       restoreBtn.textContent = "שחזור ♻️";
@@ -773,7 +834,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const i = allDocsData.findIndex(d => d.id === id);
     if (i > -1) {
       allDocsData[i]._trashed = !!trashed;
-      setUserDocs(currentUser, allDocsData, allUsersData);
+      setUserDocs(userNow, allDocsData, allUsersData);
       showNotification(trashed ? "הועבר לסל המחזור" : "שוחזר מהסל");
     }
   }
@@ -781,13 +842,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   function deleteDocForever(id) {
     const i = allDocsData.findIndex(d => d.id === id);
     if (i > -1) {
+      // מוחקים גם את הקובץ עצמו מ-IndexedDB
+      deleteFileFromDB(id).catch(() => {});
       allDocsData.splice(i, 1);
-      setUserDocs(currentUser, allDocsData, allUsersData);
+      setUserDocs(userNow, allDocsData, allUsersData);
       showNotification("הקובץ נמחק לצמיתות");
     }
   }
 
-  // מודאל עריכה
   function openEditModal(doc) {
     currentlyEditingDocId = doc.id;
 
@@ -850,7 +912,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       allDocsData[idx].category          = edit_category.value.trim() || "";
       allDocsData[idx].sharedWith        = updatedShared;
 
-      setUserDocs(currentUser, allDocsData, allUsersData);
+      setUserDocs(userNow, allDocsData, allUsersData);
 
       const currentCat = categoryTitle.textContent;
       if (currentCat === "אחסון משותף") {
@@ -866,7 +928,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // כפתורי ניווט בסיסיים
+  // ניווט
   window.App = {
     renderHome,
     openSharedView,
@@ -896,7 +958,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // העלאת קובץ ושמירה אמיתית ב-localStorage
+  // העלאת קובץ ושמירה (Metadata -> localStorage, קובץ -> IndexedDB)
   if (fileInput) {
     fileInput.addEventListener("change", async () => {
       const file = fileInput.files[0];
@@ -908,7 +970,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       try {
         const fileName = file.name.trim();
 
-        // למנוע כפילות בשם
         const alreadyExists = allDocsData.some(doc => {
           return (
             doc.originalFileName === fileName &&
@@ -921,7 +982,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           return;
         }
 
-        // ניחוש קטגוריה
+        // קטגוריה
         let guessedCategory = guessCategoryForFileNameOnly(file.name);
         if (!guessedCategory || guessedCategory === "אחר") {
           const manual = prompt(
@@ -936,7 +997,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
         }
 
-        // חילוץ אחריות אם זו אחריות
+        // פרטי אחריות אם זה "אחריות"
         let warrantyStart = null;
         let warrantyExpiresAt = null;
         let autoDeleteAfter = null;
@@ -948,14 +1009,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             autoDeleteAfter: null,
           };
 
-          // OCR PDF
           if (file.type === "application/pdf") {
             const ocrText = await extractTextFromPdfWithOcr(file);
             const dataFromText = extractWarrantyFromText(ocrText);
             extracted = { ...extracted, ...dataFromText };
           }
 
-          // OCR תמונה
           if (file.type.startsWith("image/") && window.Tesseract) {
             const { data } = await window.Tesseract.recognize(file, "heb+eng", {
               tessedit_pageseg_mode: 6,
@@ -965,7 +1024,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             extracted = { ...extracted, ...dataFromText };
           }
 
-          // fallback גולמי אם OCR לא עבד
           if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
             const buf = await file.arrayBuffer().catch(() => null);
             if (buf) {
@@ -975,7 +1033,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
           }
 
-          // fallback לשאלות ידני
           if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
             const manualData = fallbackAskWarrantyDetails();
             if (manualData.warrantyStart) {
@@ -994,19 +1051,25 @@ document.addEventListener("DOMContentLoaded", async () => {
           autoDeleteAfter   = extracted.autoDeleteAfter   || null;
         }
 
-        // קוראים את הקובץ ל-base64
+        // קוראות את הקובץ כ-base64 (dataURL)
         const fileDataBase64 = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => {
-            resolve(reader.result); // data:...base64
+            resolve(reader.result);
           };
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
 
-        // בונים האובייקט שישמר
+        // מזהה למסמך
+        const newId = crypto.randomUUID();
+
+        // שמירת הקובץ עצמו ב-IndexedDB (לא ב-localStorage)
+        await saveFileToDB(newId, fileDataBase64);
+
+        // נבנה אובייקט מסמך בלי לשמור את כל הבסיס64
         const newDoc = {
-          id: crypto.randomUUID(),
+          id: newId,
           title: fileName,
           originalFileName: fileName,
           category: guessedCategory,
@@ -1021,38 +1084,44 @@ document.addEventListener("DOMContentLoaded", async () => {
           autoDeleteAfter,
 
           mimeType: file.type,
-          fileDataBase64: fileDataBase64,
+          hasFile: true // יש קובץ שמור ב-IndexedDB
         };
 
-        // מוסיפים ושומרים ב-localStorage לפני כל דבר אחר
         allDocsData.push(newDoc);
-        setUserDocs(currentUser, allDocsData, allUsersData);
+        setUserDocs(userNow, allDocsData, allUsersData);
 
-        showNotification("הקובץ נוסף לארכיון ✅");
+  
 
-        // מרעננים את המסך הנוכחי (כדי שתראי אותו מיד)
-        const currentCat = categoryTitle.textContent;
-        if (currentCat === "אחסון משותף") {
-          openSharedView();
-        } else if (currentCat === "סל מחזור") {
-          openRecycleView();
-        } else if (!homeView.classList.contains("hidden")) {
-          renderHome();
-        } else {
-          openCategoryView(currentCat);
-        }
+        // ניסוח הודעה נחמד לפי התיקייה
+let niceCat = guessedCategory && guessedCategory.trim()
+  ? guessedCategory.trim()
+  : "התיקייה";
+
+showNotification(`הקובץ נוסף לתיקייה "${niceCat}" ✅`);
+
+const currentCat = categoryTitle.textContent;
+if (currentCat === "אחסון משותף") {
+  openSharedView();
+} else if (currentCat === "סל מחזור") {
+  openRecycleView();
+} else if (!homeView.classList.contains("hidden")) {
+  renderHome();
+} else {
+  openCategoryView(currentCat);
+}
+
 
         fileInput.value = "";
 
       } catch (err) {
-        console.error("שגיאה חלקית בהעלאה/ניתוח:", err);
-        showNotification("הקובץ נשמר אבל היתה בעיה בזיהוי האוטומטי (זה בסדר)", true);
+        console.error("שגיאה בהעלאה:", err);
+        showNotification("הייתה בעיה בהעלאה / OCR. נסי שוב או קובץ אחר.", true);
       }
     });
   }
 
-  // האזנה גלובלית לכפתור "פתיחת קובץ"
-  document.addEventListener("click", (ev) => {
+  // פתיחת קובץ מה-IndexedDB
+  document.addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-open-id]");
     if (!btn) return;
 
@@ -1064,24 +1133,28 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    if (!docObj.fileDataBase64) {
-      showNotification("אין קובץ שמור בפנים. תעלי את המסמך הזה מחדש 💾", true);
+    // נטען את ה-dataURL מתוך IndexedDB
+    let dataUrl = null;
+    try {
+      dataUrl = await loadFileFromDB(docObj.id);
+    } catch (e) {
+      console.error("שגיאה בשליפת קובץ מה-DB:", e);
+    }
+
+    if (!dataUrl) {
+      showNotification("הקובץ הזה לא שמור / גדול מדי או נמחק מהמכשיר. אבל הפרטים נשמרו.", true);
       return;
     }
 
-    // במקום window.open(...dataURL...) שיכול להיחסם,
-    // ניצור לינק <a> עם download או פתיחה ישירה ונלחץ עליו.
     const a = document.createElement("a");
-    a.href = docObj.fileDataBase64;
-    // אם זה PDF/תמונה - הדפדפן יציג. אם זה מסמך אחר - יוריד.
+    a.href = dataUrl;
     a.download = docObj.originalFileName || "file";
-    // נוודא פתיחה בחלון חדש במקרה שזה ניתן להציג:
     a.target = "_blank";
     document.body.appendChild(a);
     a.click();
     a.remove();
   });
 
-  // נתחיל מהמסך הראשי
+  // להתחיל בדף הבית
   renderHome();
 });
