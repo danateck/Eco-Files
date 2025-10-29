@@ -653,19 +653,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   let allUsersData = loadAllUsersDataFromStorage();
   let allDocsData  = getUserDocs(userNow, allUsersData);
 
+function normalizeEmail(e) { return (e || "").trim().toLowerCase(); }
 
   // === INIT shared fields (run once after loading allUsersData/allDocsData) ===
 function ensureUserSharedFields(allUsersData, username) {
   if (!allUsersData[username]) allUsersData[username] = { password: "", docs: [] };
   const u = allUsersData[username];
-  if (!u.email) u.email = username; // נשתמש בשם ככתובת אם אין
-  if (!u.sharedFolders) u.sharedFolders = {}; // {folderId: {name, owner, members:[]}}
-  if (!u.incomingShareRequests) u.incomingShareRequests = []; // [{folderId, folderName, fromEmail, status}]
-  if (!u.outgoingShareRequests) u.outgoingShareRequests = []; // [{folderId, toEmail, status}]
+
+  // אם אין email, ננסה לקבוע:
+  // 1) אם שם המשתמש נראה כמו מייל – נשמור אותו כ-email
+  // 2) אחרת נשמור את השם כ-email לוגי, כדי שתמיד תהיה לנו זהות יציבה
+  if (!u.email) {
+    const looksLikeEmail = /.+@.+\..+/.test(username);
+    u.email = looksLikeEmail ? username : (u.email || username);
+  }
+
+  if (!u.sharedFolders) u.sharedFolders = {};
+  if (!u.incomingShareRequests) u.incomingShareRequests = [];
+  if (!u.outgoingShareRequests) u.outgoingShareRequests = [];
 }
+
+
 function findUsernameByEmail(allUsersData, email) {
+  const target = normalizeEmail(email);
   for (const [uname, u] of Object.entries(allUsersData)) {
-    if ((u.email || uname).toLowerCase() === email.toLowerCase()) return uname;
+    const userEmail = normalizeEmail(u.email || uname);
+    if (userEmail === target) return uname;
   }
   return null;
 }
@@ -784,28 +797,25 @@ addToSharedBtn.className = "doc-action-btn";
 addToSharedBtn.textContent = "הכנס לתיקייה משותפת";
 addToSharedBtn.addEventListener("click", () => {
   const me = allUsersData[userNow];
-  const folders = Object.entries(me.sharedFolders || {});
-  if (!folders.length) {
-    showNotification("אין לך עדיין תיקיות משותפות. צרי אחת במסך 'אחסון משותף'.", true);
-    return;
-  }
-  // בוחרים תיקייה ע"י prompt פשוט
-  const options = folders.map(([fid, f]) => `${f.name} [${fid}]`).join("\n");
-  const pick = prompt("בחרי תיקייה (הדביקי את ה-ID שבסוגריים):\n" + options);
-  if (!pick) return;
-  const chosen = folders.find(([fid]) => fid === pick.trim());
-  if (!chosen) { showNotification("Folder ID לא נמצא", true); return; }
-
-  const [folderId] = chosen;
-  // עדכון המסמך
-  const docId = doc.id;
-  const i = allDocsData.findIndex(d => d.id === docId);
-  if (i > -1) {
-    allDocsData[i].sharedFolderId = folderId;
-    setUserDocs(userNow, allDocsData, allUsersData);
-    showNotification("המסמך שויך לתיקייה המשותפת");
-  }
+  openSharedFolderPicker(me, (folderId) => {
+    const docId = doc.id;
+    const i = allDocsData.findIndex(d => d.id === docId);
+    if (i > -1) {
+      allDocsData[i].sharedFolderId = folderId;
+      setUserDocs(userNow, allDocsData, allUsersData);
+      showNotification("המסמך שויך לתיקייה המשותפת");
+      const currentCat = categoryTitle.textContent;
+      if (currentCat === "אחסון משותף") {
+        openSharedView();
+      } else if (currentCat === "סל מחזור") {
+        openRecycleView();
+      } else {
+        openCategoryView(currentCat);
+      }
+    }
+  });
 });
+
 actions.appendChild(addToSharedBtn);
 
 
@@ -880,6 +890,101 @@ function collectSharedFolderDocs(allUsersData, folderId) {
   }
   return list;
 }
+
+
+// ===== Smart Shared-Folder Picker (modal) =====
+function createEl(tag, attrs = {}, children = []) {
+  const el = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, v]) => {
+    if (k === "class") el.className = v;
+    else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+    else el.setAttribute(k, v);
+  });
+  (Array.isArray(children) ? children : [children]).forEach(c => {
+    if (c == null) return;
+    if (typeof c === "string") el.appendChild(document.createTextNode(c));
+    else el.appendChild(c);
+  });
+  return el;
+}
+
+function openSharedFolderPicker(me, onSelect) {
+  const folders = Object.entries(me.sharedFolders || {}); // [ [fid, {name,...}], ... ]
+  if (!folders.length) {
+    showNotification("אין לך עדיין תיקיות משותפות. צרי אחת במסך 'אחסון משותף'.", true);
+    return;
+  }
+
+  // Overlay
+  const overlay = createEl("div", { style: {
+    position: "fixed", inset: "0", background: "rgba(0,0,0,.45)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    zIndex: "10000", fontFamily: "Rubik,system-ui,sans-serif"
+  }});
+
+  const panel = createEl("div", { style: {
+    background: "#fff", color:"#000", width:"min(520px, 92vw)", maxHeight:"80vh",
+    borderRadius:"12px", padding:"12px", boxShadow:"0 18px 44px rgba(0,0,0,.45)",
+    display: "grid", gridTemplateRows:"auto auto 1fr auto", gap:"10px"
+  }});
+
+  const title = createEl("div", { style:{fontWeight:"700"} }, "בחרי תיקייה משותפת");
+  const search = createEl("input", { type:"text", placeholder:"חיפוש לפי שם תיקייה...", style:{
+    padding:".5rem", border:"1px solid #bbb", borderRadius:"8px", width:"100%"
+  }});
+  const listWrap = createEl("div", { style:{
+    overflow:"auto", border:"1px solid #eee", borderRadius:"8px", padding:"6px"
+  }});
+  const btnRow = createEl("div", { style:{ display:"flex", gap:"8px", justifyContent:"flex-end" }});
+  const cancelBtn = createEl("button", { class:"doc-action-btn", style:{background:"#b63a3a", color:"#fff"}}, "בטל");
+  const chooseBtn = createEl("button", { class:"doc-action-btn", style:{background:"#0e3535", color:"#fff"}}, "בחרי");
+
+  btnRow.append(cancelBtn, chooseBtn);
+  panel.append(title, search, listWrap, btnRow);
+  overlay.appendChild(panel);
+  document.body.appendChild(overlay);
+
+  let selectedId = null;
+
+  function renderList(filter = "") {
+    listWrap.innerHTML = "";
+    const norm = (s) => (s||"").toString().toLowerCase().trim();
+    const f = norm(filter);
+    const filtered = folders.filter(([fid, fobj]) => norm(fobj.name).includes(f));
+
+    filtered.forEach(([fid, fobj]) => {
+      const row = createEl("label", { style:{
+        display:"grid", gridTemplateColumns:"24px 1fr", alignItems:"center",
+        gap:"8px", padding:"6px", borderRadius:"6px", cursor:"pointer"
+      }});
+      row.addEventListener("mouseover", () => row.style.background = "#f7f7f7");
+      row.addEventListener("mouseout",  () => row.style.background = "transparent");
+
+      const radio = createEl("input", { type:"radio", name:"sf_pick", value: fid });
+      const name  = createEl("div", {}, `${fobj.name}  `);
+      row.append(radio, name);
+      listWrap.appendChild(row);
+
+      radio.addEventListener("change", () => { selectedId = fid; });
+    });
+
+    if (!filtered.length) {
+      listWrap.appendChild(createEl("div", { style:{opacity:.7, padding:"8px"}}, "לא נמצאו תיקיות מתאימות"));
+    }
+  }
+
+  renderList();
+  search.addEventListener("input", () => renderList(search.value));
+
+  cancelBtn.onclick = () => { overlay.remove(); };
+  chooseBtn.onclick = () => {
+    if (!selectedId) { showNotification("בחרי תיקייה מהרשימה", true); return; }
+    overlay.remove();
+    if (typeof onSelect === "function") onSelect(selectedId);
+  };
+}
+
+
 
 // === UI: רינדור ניהול תיקיות משותפות + בקשות ממתינות ===
 function openSharedView() {
@@ -1038,11 +1143,13 @@ function openSharedView() {
       return;
     }
 
+
+    const raw = (emailInput?.value || "");
     // שלח הזמנה
     const inviteId = t.getAttribute?.("data-invite");
     if (inviteId) {
       const emailInput = listRow.querySelector(`input[placeholder="הוסף מייל לשיתוף"][data-email="${inviteId}"]`);
-      const targetEmail = (emailInput?.value || "").trim();
+      const targetEmail = raw.trim().toLowerCase(); // חשוב!
       if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
 
       const targetUname = findUsernameByEmail(allUsersData, targetEmail);
