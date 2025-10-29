@@ -400,7 +400,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
       const m = textToSearch.match(re);
       if (m && m[1]) {
         const guess = normalizeDateGuess(m[1]);
-        if (isValidYMD(guess)) {
+        if (guess && isValidYMD(guess)) {
           return guess;
         }
       }
@@ -419,7 +419,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "תאריך\\s*חשבונית",
     "ת\\.?\\s*חשבונית",
     "תאריך\\s*תעודת\\s*משלוח",
-    "תעודת\\s*משלוח\\s*מספר", // לפעמים זה מופיע ככותרת בראש
+    "תעודת\\s*משלוח\\s*מספר",
     "תאריך\\s*משלוח",
     "תאריך\\s*אספקה",
     "תאריך\\s*מסירה",
@@ -448,9 +448,9 @@ function extractWarrantyFromText(rawBufferMaybe) {
   ], lower);
 
   // שלב 3: אם עדיין אין warrantyStart,
-  // תני עדיפות לתאריך שמופיע ממש בהתחלה של המסמך (למעלה במסמך).
+  // תיקח תאריך שמופיע בהתחלה של המסמך (למעלה).
   if (!warrantyStart) {
-    const headChunk = lower.slice(0, 300); // רק ההתחלה
+    const headChunk = lower.slice(0, 300);
     const headDateRegex = new RegExp(
       "(" +
         "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
@@ -464,14 +464,14 @@ function extractWarrantyFromText(rawBufferMaybe) {
     const mHead = headChunk.match(headDateRegex);
     if (mHead && mHead[1]) {
       const guess = normalizeDateGuess(mHead[1]);
-      if (isValidYMD(guess)) {
+      if (guess && isValidYMD(guess)) {
         warrantyStart = guess;
       }
     }
   }
 
-  // שלב 4: אם עדיין אין warrantyStart,
-  // נעשה fallback זהיר: אם יש רק תאריך תקין אחד בכל המסמך -> קחי אותו.
+  // שלב 4: fallback זהיר:
+  // אם עדיין אין warrantyStart, אבל יש רק תאריך אחד חוקי בכל הטקסט -> קחי אותו.
   if (!warrantyStart) {
     const anyDateRegex = new RegExp(
       "(" +
@@ -487,7 +487,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     const normalized = [];
     for (const candidate of matches) {
       const ymd = normalizeDateGuess(candidate);
-      if (isValidYMD(ymd)) {
+      if (ymd && isValidYMD(ymd)) {
         normalized.push(ymd);
       }
     }
@@ -497,7 +497,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // שלב 5: אין תוקף אחריות אבל יש תאריך התחלה -> נניח שנה
+  // שלב 5: אם אין תוקף אחריות מפורש אבל יש תאריך קנייה => נניח שנה אחריות
   if (!warrantyExpiresAt && warrantyStart && isValidYMD(warrantyStart)) {
     const [Y,M,D] = warrantyStart.split("-");
     const startDate = new Date(`${Y}-${M}-${D}T00:00:00`);
@@ -526,12 +526,19 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
+  console.log("📤 extractWarrantyFromText() ->", {
+    warrantyStart,
+    warrantyExpiresAt,
+    autoDeleteAfter
+  });
+
   return {
     warrantyStart: (warrantyStart && isValidYMD(warrantyStart)) ? warrantyStart : null,
     warrantyExpiresAt: (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) ? warrantyExpiresAt : null,
     autoDeleteAfter
   };
 }
+
 
 
 
@@ -946,72 +953,81 @@ document.addEventListener("DOMContentLoaded", async () => {
       let warrantyExpiresAt = null;
       let autoDeleteAfter = null;
 
-      if (guessedCategory === "אחריות") {
-    console.log("🔅 קובץ בקטגורית 'אחריות' => מפעילים OCR וניתוח");
+     if (guessedCategory === "אחריות") {
+  console.log("🔅 קובץ בקטגורית 'אחריות' => מפעילים OCR וניתוח");
 
-    let extracted = {
-      warrantyStart: null,
-      warrantyExpiresAt: null,
-      autoDeleteAfter: null,
-    };
+  let extracted = {
+    warrantyStart: null,
+    warrantyExpiresAt: null,
+    autoDeleteAfter: null,
+  };
 
-    // 1. אם זה PDF -> OCR PDF ראשון
-    if (file.type === "application/pdf") {
-      const ocrText = await extractTextFromPdfWithOcr(file);
-      window.__lastOcrText = ocrText; // <<< שמירה גלובלית כדי שנוכל לראות בקונסול
-      console.log("OCR raw text >>>", ocrText);
+  // 1. PDF -> OCR לעמוד הראשון
+  if (file.type === "application/pdf") {
+    const ocrText = await extractTextFromPdfWithOcr(file);
+    window.__lastOcrText = ocrText;
+    console.log("OCR raw text >>>", ocrText);
 
-      const dataFromText = extractWarrantyFromText(ocrText);
+    const dataFromText = extractWarrantyFromText(ocrText);
+    extracted = { ...extracted, ...dataFromText };
+  }
+
+  // 2. תמונה -> OCR ישיר
+  if (file.type.startsWith("image/")) {
+    const { data } = await Tesseract.recognize(file, "heb+eng", {
+      tessedit_pageseg_mode: 6,
+    });
+    const imgText = data?.text || "";
+    window.__lastOcrText = imgText;
+    console.log("OCR raw text (image) >>>", imgText);
+
+    const dataFromText = extractWarrantyFromText(imgText);
+    extracted = { ...extracted, ...dataFromText };
+  }
+
+  // 3. fallback לטקסט גולמי (במקרה שקיבלנו קובץ טקסטואלי)
+  if (!window.__lastOcrText) {
+    const buf = await file.arrayBuffer().catch(() => null);
+    if (buf) {
+      const txt = new TextDecoder("utf-8").decode(buf);
+      window.__lastOcrText = txt;
+      console.log("Raw text fallback >>>", txt);
+
+      const dataFromText = extractWarrantyFromText(txt);
       extracted = { ...extracted, ...dataFromText };
     }
+  }
 
-    // 2. אם זה תמונה -> OCR ישיר
-    if (
-      file.type.startsWith("image/")
-    ) {
-      const { data } = await Tesseract.recognize(file, "heb+eng", {
-        tessedit_pageseg_mode: 6,
-      });
-      const imgText = data?.text || "";
-      window.__lastOcrText = imgText;
-      console.log("OCR raw text (image) >>>", imgText);
+  console.log("📦 extracted BEFORE prompt:", extracted);
 
-      const dataFromText = extractWarrantyFromText(imgText);
-      extracted = { ...extracted, ...dataFromText };
+  // 4. אם עדיין אין לנו תאריך בכלל -> נשאל אותך ידנית
+  if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
+    const manualData = fallbackAskWarrantyDetails(); // עושה prompt
+    if (manualData.warrantyStart) {
+      extracted.warrantyStart = manualData.warrantyStart;
     }
-
-    // 3. fallback: אם זה קובץ טקסטואלי (docx/pdf טקסט חי בלי OCR)
-    if (!window.__lastOcrText) {
-      const buf = await file.arrayBuffer().catch(() => null);
-      if (buf) {
-        const txt = new TextDecoder("utf-8").decode(buf);
-        window.__lastOcrText = txt;
-        console.log("Raw text fallback >>>", txt);
-
-        const dataFromText = extractWarrantyFromText(txt);
-        extracted = { ...extracted, ...dataFromText };
-      }
+    if (manualData.warrantyExpiresAt) {
+      extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
     }
-
-    // 4. אם עדיין אין לנו כלום מ-OCR -> נשאל ידנית
-    if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
-      const manualData = fallbackAskWarrantyDetails(); // פותח prompt
-      if (manualData.warrantyStart) {
-        extracted.warrantyStart = manualData.warrantyStart;
-      }
-      if (manualData.warrantyExpiresAt) {
-        extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
-      }
-      if (manualData.autoDeleteAfter) {
-        extracted.autoDeleteAfter = manualData.autoDeleteAfter;
-      }
+    if (manualData.autoDeleteAfter) {
+      extracted.autoDeleteAfter = manualData.autoDeleteAfter;
     }
+  }
 
-    // 5. נשמור את מה שיצא ב-extracted בשדות שנשמרים במסמך
-    warrantyStart     = extracted.warrantyStart || null;
-    warrantyExpiresAt = extracted.warrantyExpiresAt || null;
-    autoDeleteAfter   = extracted.autoDeleteAfter || null;
+  console.log("✅ extracted AFTER prompt:", extracted);
+
+  // 5. עכשיו זה נכנס לשדות הסופיים שנשמרים במסמך
+  warrantyStart     = extracted.warrantyStart || null;
+  warrantyExpiresAt = extracted.warrantyExpiresAt || null;
+  autoDeleteAfter   = extracted.autoDeleteAfter || null;
+
+  console.log("💾 values going into save:", {
+    warrantyStart,
+    warrantyExpiresAt,
+    autoDeleteAfter
+  });
 }
+
 
 
       // עכשיו בונים את הרשומה לשמירה
