@@ -271,7 +271,7 @@ async function extractTextFromPdfWithOcr(file) {
 // 3.2 חילוץ אחריות מתמליל (טקסט גולמי)
 // -------------------------------------------------
 function extractWarrantyFromText(rawBufferMaybe) {
-  // --- שלב 0: להכין טקסט מלא + lowercase לעבודה regex ---
+  // --- שלב 0: להכין טקסט מלא כמו שהוא הגיע מה-OCR ---
   let rawText = "";
   if (typeof rawBufferMaybe === "string") {
     rawText = rawBufferMaybe;
@@ -281,9 +281,10 @@ function extractWarrantyFromText(rawBufferMaybe) {
     rawText = String(rawBufferMaybe || "");
   }
 
-  // נשמור גם גרסה מנוקה וגם lowercase
-  const cleaned = rawText.replace(/\s+/g, " ").trim();
-  const lower   = cleaned.toLowerCase();
+  // versions:
+  const rawLower = rawText.toLowerCase(); // בלי לנרמל רווחים
+  const cleaned  = rawText.replace(/\s+/g, " ").trim();
+  const lower    = cleaned.toLowerCase();
 
   // --- עוזרים פנימיים ---
 
@@ -311,16 +312,18 @@ function extractWarrantyFromText(rawBufferMaybe) {
   function normalizeDateGuess(str) {
     if (!str) return null;
 
+    // קודם ננקה תווי מפריד משונים ל-"-"
     let s = str
+      .trim()
       .replace(/[,]/g, " ")
-      .replace(/[.\/\\\-]+/g, "-")
-      .replace(/\s+/g, "-")
-      .toLowerCase()
-      .trim();
+      // כל התווים שלא ספרות או אותיות נוריד ל "-"
+      .replace(/[^0-9a-zA-Zא-ת]+/g, "-")
+      .replace(/-+/g, "-")
+      .toLowerCase();
 
     const tokens = s.split("-");
 
-    // מילולי: 31 אוגוסט 2022 / 31 aug 2022
+    // מילולי: 31 אוגוסט 2022
     if (tokens.some(t => monthMap[t])) {
       let day = null, mon = null, year = null;
       for (const t of tokens) {
@@ -383,18 +386,18 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return null;
   }
 
-  // מחפש "מילת מפתח + תאריך"
+  // מחפש "keyword + date"
   function findDateAfterKeywords(keywords, textToSearch) {
     for (const kw of keywords) {
       const pattern =
         kw +
         "[ \\t:]*" +
         "(" +
-          "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
+          "\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{2,4}" + // dd?sep?mm?sep?yyyy
           "|" +
-          "\\d{4}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{1,2}" +
+          "\\d{4}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}" + // yyyy?sep?mm?sep?dd
           "|" +
-          "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +
+          "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +                    // 31 aug 2022
         ")";
       const re = new RegExp(pattern, "i");
       const m = textToSearch.match(re);
@@ -408,7 +411,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return null;
   }
 
-  // שלב 1: תאריך קנייה/מסירה/חשבונית לפי מילות מפתח
+  // 1. תאריך קנייה/מסירה/חשבונית לפי מילות מפתח
   let warrantyStart = findDateAfterKeywords([
     "תאריך\\s*ק.?נ.?י.?ה",
     "תאריך\\s*רכישה",
@@ -432,7 +435,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "buy\\s*date"
   ], lower);
 
-  // שלב 2: תוקף אחריות / אחריות עד
+  // 2. תאריך סיום אחריות
   let warrantyExpiresAt = findDateAfterKeywords([
     "תוקף\\s*אחריות",
     "תוקף\\s*האחריות",
@@ -447,21 +450,14 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "expiration\\s*date"
   ], lower);
 
-  // שלב 3: אם עדיין אין warrantyStart,
-  // תיקח תאריך שמופיע בהתחלה של המסמך (למעלה).
+  // 3. HEAD CHUNK STRATEGY (מהתחלת המסמך בלי לנקות):
   if (!warrantyStart) {
-    const headChunk = lower.slice(0, 300);
-    const headDateRegex = new RegExp(
-      "(" +
-        "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
-        "|" +
-        "\\d{4}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{1,2}" +
-        "|" +
-        "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +
-      ")",
-      "i"
-    );
-    const mHead = headChunk.match(headDateRegex);
+    const headChunkRaw = rawLower.slice(0, 400); // לוקחות את ההתחלה כמו שהיא
+    console.log("▶ headChunkRaw:", headChunkRaw);
+
+    // נחפש בכל הראש תאריך בפורמט dd/..../yyyy וכדומה
+    const headDateRegex = /(\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{2,4}|\d{4}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}|\d{1,2}\s+[a-zא-ת]+\s+\d{2,4})/i;
+    const mHead = headChunkRaw.match(headDateRegex);
     if (mHead && mHead[1]) {
       const guess = normalizeDateGuess(mHead[1]);
       if (guess && isValidYMD(guess)) {
@@ -470,20 +466,10 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // שלב 4: fallback זהיר:
-  // אם עדיין אין warrantyStart, אבל יש רק תאריך אחד חוקי בכל הטקסט -> קחי אותו.
+  // 4. Fallback: אם עדיין אין warrantyStart -> אם יש תאריך תקין אחד בכל הטקסט
   if (!warrantyStart) {
-    const anyDateRegex = new RegExp(
-      "(" +
-        "\\d{1,2}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{2,4}" +
-        "|" +
-        "\\d{4}[.\\-/\\\\ ]\\d{1,2}[.\\-/\\\\ ]\\d{1,2}" +
-        "|" +
-        "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +
-      ")",
-      "ig"
-    );
-    const matches = [...lower.matchAll(anyDateRegex)].map(m => m[1]);
+    const anyDateRegex = /(\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{2,4}|\d{4}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}|\d{1,2}\s+[a-zא-ת]+\s+\d{2,4})/ig;
+    const matches = [...rawLower.matchAll(anyDateRegex)].map(m => m[1]);
     const normalized = [];
     for (const candidate of matches) {
       const ymd = normalizeDateGuess(candidate);
@@ -497,7 +483,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // שלב 5: אם אין תוקף אחריות מפורש אבל יש תאריך קנייה => נניח שנה אחריות
+  // 5. אין סוף אחריות? נניח שנה
   if (!warrantyExpiresAt && warrantyStart && isValidYMD(warrantyStart)) {
     const [Y,M,D] = warrantyStart.split("-");
     const startDate = new Date(`${Y}-${M}-${D}T00:00:00`);
@@ -511,7 +497,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // שלב 6: autoDeleteAfter = שנתיים אחרי סוף האחריות
+  // 6. autoDeleteAfter = שנתיים אחרי סוף האחריות
   let autoDeleteAfter = null;
   if (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) {
     const [Y2,M2,D2] = warrantyExpiresAt.split("-");
@@ -538,6 +524,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     autoDeleteAfter
   };
 }
+
 
 
 
