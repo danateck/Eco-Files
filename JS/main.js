@@ -281,12 +281,11 @@ function extractWarrantyFromText(rawBufferMaybe) {
     rawText = String(rawBufferMaybe || "");
   }
 
-  // versions:
-  const rawLower = rawText.toLowerCase(); // בלי לנרמל רווחים
-  const cleaned  = rawText.replace(/\s+/g, " ").trim();
+  const rawLower = rawText.toLowerCase(); // שומר רווחים ושורות בדיוק כמו ב-OCR
+  const cleaned  = rawText.replace(/\s+/g, " ").trim(); // גירסה "שורה אחת"
   const lower    = cleaned.toLowerCase();
 
-  // --- עוזרים פנימיים ---
+  // ---------- עוזרים פנימיים ----------
 
   function isValidYMD(ymd) {
     if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
@@ -308,22 +307,21 @@ function extractWarrantyFromText(rawBufferMaybe) {
     נובמבר:"11", דצמבר:"12",
   };
 
-  // הופך "31/08/2022", "31-08-22", "31 אוגוסט 2022", "2022-08-31" => "2022-08-31"
+  // הופך משהו שנראה כמו תאריך למבנה yyyy-mm-dd
   function normalizeDateGuess(str) {
     if (!str) return null;
 
-    // קודם ננקה תווי מפריד משונים ל-"-"
+    // איחוד מפרידים לכל דבר שהוא לא אות/ספרה ל "-"
     let s = str
       .trim()
       .replace(/[,]/g, " ")
-      // כל התווים שלא ספרות או אותיות נוריד ל "-"
       .replace(/[^0-9a-zA-Zא-ת]+/g, "-")
       .replace(/-+/g, "-")
       .toLowerCase();
 
     const tokens = s.split("-");
 
-    // מילולי: 31 אוגוסט 2022
+    // דוגמה: 31 אוגוסט 2022
     if (tokens.some(t => monthMap[t])) {
       let day = null, mon = null, year = null;
       for (const t of tokens) {
@@ -386,23 +384,25 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return null;
   }
 
-  // מחפש "keyword + date"
+  // פונקציה שעוברת על רשימת מילים ומנסה "מילת מפתח + תאריך"
   function findDateAfterKeywords(keywords, textToSearch) {
     for (const kw of keywords) {
       const pattern =
         kw +
         "[ \\t:]*" +
         "(" +
-          "\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{2,4}" + // dd?sep?mm?sep?yyyy
+          "\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{2,4}" + // dd?mm?yyyy
           "|" +
-          "\\d{4}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}" + // yyyy?sep?mm?sep?dd
+          "\\d{4}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}" + // yyyy?mm?dd
           "|" +
           "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +                    // 31 aug 2022
         ")";
       const re = new RegExp(pattern, "i");
       const m = textToSearch.match(re);
       if (m && m[1]) {
+        console.log("🔍 keyword date match:", kw, "=>", m[1]);
         const guess = normalizeDateGuess(m[1]);
+        console.log("   normalize =>", guess);
         if (guess && isValidYMD(guess)) {
           return guess;
         }
@@ -411,7 +411,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return null;
   }
 
-  // 1. תאריך קנייה/מסירה/חשבונית לפי מילות מפתח
+  // ---------- שלב 1: תאריך התחלה לפי מילות מפתח ----------
   let warrantyStart = findDateAfterKeywords([
     "תאריך\\s*ק.?נ.?י.?ה",
     "תאריך\\s*רכישה",
@@ -435,7 +435,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "buy\\s*date"
   ], lower);
 
-  // 2. תאריך סיום אחריות
+  // ---------- שלב 2: תאריך סיום אחריות ----------
   let warrantyExpiresAt = findDateAfterKeywords([
     "תוקף\\s*אחריות",
     "תוקף\\s*האחריות",
@@ -450,23 +450,31 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "expiration\\s*date"
   ], lower);
 
-  // 3. HEAD CHUNK STRATEGY (מהתחלת המסמך בלי לנקות):
+  // ---------- שלב 3: אם אין warrantyStart עדיין → ננסה לתפוס "תאריך בשורה נפרדת בהתחלה" ----------
   if (!warrantyStart) {
-    const headChunkRaw = rawLower.slice(0, 400); // לוקחות את ההתחלה כמו שהיא
-    console.log("▶ headChunkRaw:", headChunkRaw);
+    // ניקח את 500 התווים הראשונים מהטקסט הגולמי (rawLower)
+    const headChunkRaw = rawLower.slice(0, 500);
+    console.log("▶ headChunkRaw(DEBUG):", headChunkRaw);
 
-    // נחפש בכל הראש תאריך בפורמט dd/..../yyyy וכדומה
-    const headDateRegex = /(\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{2,4}|\d{4}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}|\d{1,2}\s+[a-zא-ת]+\s+\d{2,4})/i;
-    const mHead = headChunkRaw.match(headDateRegex);
-    if (mHead && mHead[1]) {
-      const guess = normalizeDateGuess(mHead[1]);
-      if (guess && isValidYMD(guess)) {
-        warrantyStart = guess;
+    // נחפש בשורות הראשונות דפוס כמו dd/mm/yyyy או dd-mm-yyyy
+    // נגדיר regex בלוקלי: תאריך בתחילת שורה או אחרי רווח/שבירה
+    const headLines = headChunkRaw.split(/\r?\n/);
+
+    for (const line of headLines) {
+      const candidateMatch = line.match(/(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/);
+      if (candidateMatch && candidateMatch[1]) {
+        console.log("🔎 head line candidate:", candidateMatch[1], "from line:", line);
+        const guess = normalizeDateGuess(candidateMatch[1]);
+        console.log("   normalize(head line) =>", guess);
+        if (guess && isValidYMD(guess)) {
+          warrantyStart = guess;
+          break;
+        }
       }
     }
   }
 
-  // 4. Fallback: אם עדיין אין warrantyStart -> אם יש תאריך תקין אחד בכל הטקסט
+  // ---------- שלב 4: fallback אחרון ----------
   if (!warrantyStart) {
     const anyDateRegex = /(\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{2,4}|\d{4}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}|\d{1,2}\s+[a-zא-ת]+\s+\d{2,4})/ig;
     const matches = [...rawLower.matchAll(anyDateRegex)].map(m => m[1]);
@@ -483,7 +491,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // 5. אין סוף אחריות? נניח שנה
+  // ---------- שלב 5: אם אין תוקף אחריות מפורש אבל יש start → שנה אחרי ----------
   if (!warrantyExpiresAt && warrantyStart && isValidYMD(warrantyStart)) {
     const [Y,M,D] = warrantyStart.split("-");
     const startDate = new Date(`${Y}-${M}-${D}T00:00:00`);
@@ -497,7 +505,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // 6. autoDeleteAfter = שנתיים אחרי סוף האחריות
+  // ---------- שלב 6: autoDeleteAfter = שנתיים אחרי סוף האחריות ----------
   let autoDeleteAfter = null;
   if (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) {
     const [Y2,M2,D2] = warrantyExpiresAt.split("-");
@@ -524,6 +532,7 @@ function extractWarrantyFromText(rawBufferMaybe) {
     autoDeleteAfter
   };
 }
+
 
 
 
