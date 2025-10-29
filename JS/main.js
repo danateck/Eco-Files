@@ -1,9 +1,7 @@
-// main.js
-// כל הלוגיקה של האפליקציה בצד הדפדפן בלבד
-// כולל OCR, חילוץ אחריות, שמירה בלוקאל סטורג', תצוגה, בלי שרת בכלל 💚
+// main.js (גרסה מתוקנת לבעיות: פתיחת קובץ, סל מחזור, העלאה ושמירה)
 
 // -------------------------------------------------
-// 1. קטגוריות ומילות מפתח
+// 1. הגדרות קטגוריות ומילות מפתח
 // -------------------------------------------------
 const CATEGORY_KEYWORDS = {
   "כלכלה": [
@@ -146,7 +144,7 @@ function setUserDocs(username, docsArray, allUsersData) {
 }
 
 // -------------------------------------------------
-// 3. עזרים כלליים
+// 3. כלים
 // -------------------------------------------------
 function normalizeWord(word) {
   if (!word) return "";
@@ -187,105 +185,42 @@ function guessCategoryForFileNameOnly(fileName) {
   return best;
 }
 
-// -------------------------------------------------
-// 3.1 OCR (תמונה בלבד)
-// -------------------------------------------------
-async function runOCR(file) {
-  const mime = file.type.toLowerCase();
-  const isImage =
-    mime.startsWith("image/") ||
-    file.name.toLowerCase().match(/\.(jpg|jpeg|png|heic|webp|bmp)$/);
-
-  if (!isImage) {
-    return null;
-  }
-
-  if (!window.Tesseract) {
-    console.warn("Tesseract.js not loaded or script order wrong");
-    return null;
-  }
-
-  try {
-    const { data } = await window.Tesseract.recognize(file, {
-      lang: "heb+eng"
-    });
-    if (data && data.text && data.text.trim().length > 0) {
-      return data.text;
-    }
-  } catch (err) {
-    console.warn("OCR failed", err);
-  }
-
-  return null;
-}
-
-// OCR ל-PDF (עמוד ראשון): מציירים לקנבס, עושים OCR על התמונה
-// קורא PDF, מרנדר את העמוד הראשון לתמונה, עושה עליו OCR ומחזיר טקסט
+// OCR עמוד ראשון של PDF
 async function extractTextFromPdfWithOcr(file) {
-  // הגנה: אם pdfjsLib לא נטען
-  if (!window.pdfjsLib) {
-    console.warn("pdfjsLib missing");
-    return "";
-  }
+  if (!window.pdfjsLib) return "";
 
-  // נקרא את ה-PDF כ-ArrayBuffer
   const arrayBuf = await file.arrayBuffer();
-
-  // נטען את ה-PDF דרך pdf.js
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuf }).promise;
-  // ניקח בינתיים רק את העמוד הראשון
   const page = await pdf.getPage(1);
 
-  // נהפוך את העמוד הזה ל-canvas
-  const viewport = page.getViewport({ scale: 2 }); // scale 2 = יותר חד ל-OCR
+  const viewport = page.getViewport({ scale: 2 });
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   canvas.width = viewport.width;
   canvas.height = viewport.height;
+  await page.render({ canvasContext: ctx, viewport }).promise;
 
-  const renderContext = {
-    canvasContext: ctx,
-    viewport: viewport,
-  };
-  await page.render(renderContext).promise;
-
-  // עכשיו יש לנו תמונה ב-canvas -> נוציא blob
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-
-  // נריץ OCR עם Tesseract
-  if (!window.Tesseract) {
-    console.warn("Tesseract missing");
-    return "";
-  }
+  if (!window.Tesseract) return "";
 
   const { data } = await window.Tesseract.recognize(blob, "heb+eng", {
     tessedit_pageseg_mode: 6,
   });
 
-  const ocrText = data && data.text ? data.text : "";
-  return ocrText;
+  return data && data.text ? data.text : "";
 }
 
-
-// -------------------------------------------------
-// 3.2 חילוץ אחריות מתמליל (טקסט גולמי)
-// -------------------------------------------------
-function extractWarrantyFromText(rawBufferMaybe) {
-  // --- שלב 0: להכין טקסט מלא כמו שהוא הגיע מה-OCR ---
+// חילוץ אחריות
+function extractWarrantyFromText(rawTextInput) {
   let rawText = "";
-  if (typeof rawBufferMaybe === "string") {
-    rawText = rawBufferMaybe;
-  } else if (rawBufferMaybe instanceof ArrayBuffer) {
-    rawText = new TextDecoder("utf-8").decode(rawBufferMaybe);
-  } else {
-    rawText = String(rawBufferMaybe || "");
-  }
+  if (typeof rawTextInput === "string") rawText = rawTextInput;
+  else if (rawTextInput instanceof ArrayBuffer)
+    rawText = new TextDecoder("utf-8").decode(rawTextInput);
+  else rawText = String(rawTextInput || "");
 
-  const rawLower = rawText.toLowerCase(); // שומר רווחים ושורות בדיוק כמו ב-OCR
-  const cleaned  = rawText.replace(/\s+/g, " ").trim(); // גירסה "שורה אחת"
+  const rawLower = rawText.toLowerCase();
+  const cleaned  = rawText.replace(/\s+/g, " ").trim();
   const lower    = cleaned.toLowerCase();
-
-  // ---------- עוזרים פנימיים ----------
 
   function isValidYMD(ymd) {
     if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
@@ -301,17 +236,13 @@ function extractWarrantyFromText(rawBufferMaybe) {
     apr:"04", april:"04", may:"05", jun:"06", june:"06", jul:"07", july:"07",
     aug:"08", august:"08", sep:"09", sept:"09", september:"09",
     oct:"10", october:"10", nov:"11", november:"11", dec:"12", december:"12",
-
     ינואר:"01", פברואר:"02", מרץ:"03", מרס:"03", אפריל:"04", מאי:"05",
     יוני:"06", יולי:"07", אוגוסט:"08", ספטמבר:"09", אוקטובר:"10",
     נובמבר:"11", דצמבר:"12",
   };
 
-  // הופך משהו שנראה כמו תאריך למבנה yyyy-mm-dd
   function normalizeDateGuess(str) {
     if (!str) return null;
-
-    // איחוד מפרידים לכל דבר שהוא לא אות/ספרה ל "-"
     let s = str
       .trim()
       .replace(/[,]/g, " ")
@@ -320,19 +251,15 @@ function extractWarrantyFromText(rawBufferMaybe) {
       .toLowerCase();
 
     const tokens = s.split("-");
-
-    // דוגמה: 31 אוגוסט 2022
     if (tokens.some(t => monthMap[t])) {
       let day = null, mon = null, year = null;
       for (const t of tokens) {
-        if (monthMap[t]) {
-          mon = monthMap[t];
-        } else if (/^\d{1,2}$/.test(t) && parseInt(t,10) <= 31 && day === null) {
+        if (monthMap[t]) mon = monthMap[t];
+        else if (/^\d{1,2}$/.test(t) && parseInt(t,10) <= 31 && day === null)
           day = t.padStart(2,"0");
-        } else if (/^\d{2,4}$/.test(t) && year === null) {
-          if (t.length === 4) {
-            year = t;
-          } else if (t.length === 2) {
+        else if (/^\d{2,4}$/.test(t) && year === null) {
+          if (t.length === 4) year = t;
+          else {
             const yy = parseInt(t,10);
             year = (yy < 50 ? 2000+yy : 1900+yy).toString();
           }
@@ -344,7 +271,6 @@ function extractWarrantyFromText(rawBufferMaybe) {
       }
     }
 
-    // yyyy-mm-dd
     {
       const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
       if (m) {
@@ -356,7 +282,6 @@ function extractWarrantyFromText(rawBufferMaybe) {
       }
     }
 
-    // dd-mm-yyyy
     {
       const m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
       if (m) {
@@ -368,7 +293,6 @@ function extractWarrantyFromText(rawBufferMaybe) {
       }
     }
 
-    // dd-mm-yy
     {
       const m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2})$/);
       if (m) {
@@ -384,34 +308,28 @@ function extractWarrantyFromText(rawBufferMaybe) {
     return null;
   }
 
-  // פונקציה שעוברת על רשימת מילים ומנסה "מילת מפתח + תאריך"
   function findDateAfterKeywords(keywords, textToSearch) {
     for (const kw of keywords) {
       const pattern =
         kw +
         "[ \\t:]*" +
         "(" +
-          "\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{2,4}" + // dd?mm?yyyy
+          "\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{2,4}" +
           "|" +
-          "\\d{4}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}" + // yyyy?mm?dd
+          "\\d{4}[^0-9a-zA-Zא-ת]\\d{1,2}[^0-9a-zA-Zא-ת]\\d{1,2}" +
           "|" +
-          "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +                    // 31 aug 2022
+          "\\d{1,2}\\s+[a-zא-ת]+\\s+\\d{2,4}" +
         ")";
       const re = new RegExp(pattern, "i");
       const m = textToSearch.match(re);
       if (m && m[1]) {
-        console.log("🔍 keyword date match:", kw, "=>", m[1]);
         const guess = normalizeDateGuess(m[1]);
-        console.log("   normalize =>", guess);
-        if (guess && isValidYMD(guess)) {
-          return guess;
-        }
+        if (guess && isValidYMD(guess)) return guess;
       }
     }
     return null;
   }
 
-  // ---------- שלב 1: תאריך התחלה לפי מילות מפתח ----------
   let warrantyStart = findDateAfterKeywords([
     "תאריך\\s*ק.?נ.?י.?ה",
     "תאריך\\s*רכישה",
@@ -435,7 +353,6 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "buy\\s*date"
   ], lower);
 
-  // ---------- שלב 2: תאריך סיום אחריות ----------
   let warrantyExpiresAt = findDateAfterKeywords([
     "תוקף\\s*אחריות",
     "תוקף\\s*האחריות",
@@ -450,22 +367,13 @@ function extractWarrantyFromText(rawBufferMaybe) {
     "expiration\\s*date"
   ], lower);
 
-  // ---------- שלב 3: אם אין warrantyStart עדיין → ננסה לתפוס "תאריך בשורה נפרדת בהתחלה" ----------
   if (!warrantyStart) {
-    // ניקח את 500 התווים הראשונים מהטקסט הגולמי (rawLower)
     const headChunkRaw = rawLower.slice(0, 500);
-    console.log("▶ headChunkRaw(DEBUG):", headChunkRaw);
-
-    // נחפש בשורות הראשונות דפוס כמו dd/mm/yyyy או dd-mm-yyyy
-    // נגדיר regex בלוקלי: תאריך בתחילת שורה או אחרי רווח/שבירה
     const headLines = headChunkRaw.split(/\r?\n/);
-
     for (const line of headLines) {
       const candidateMatch = line.match(/(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/);
       if (candidateMatch && candidateMatch[1]) {
-        console.log("🔎 head line candidate:", candidateMatch[1], "from line:", line);
         const guess = normalizeDateGuess(candidateMatch[1]);
-        console.log("   normalize(head line) =>", guess);
         if (guess && isValidYMD(guess)) {
           warrantyStart = guess;
           break;
@@ -474,16 +382,13 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // ---------- שלב 4: fallback אחרון ----------
   if (!warrantyStart) {
     const anyDateRegex = /(\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{2,4}|\d{4}[^0-9a-zA-Zא-ת]\d{1,2}[^0-9a-zA-Zא-ת]\d{1,2}|\d{1,2}\s+[a-zא-ת]+\s+\d{2,4})/ig;
     const matches = [...rawLower.matchAll(anyDateRegex)].map(m => m[1]);
     const normalized = [];
     for (const candidate of matches) {
       const ymd = normalizeDateGuess(candidate);
-      if (ymd && isValidYMD(ymd)) {
-        normalized.push(ymd);
-      }
+      if (ymd && isValidYMD(ymd)) normalized.push(ymd);
     }
     const unique = [...new Set(normalized)];
     if (unique.length === 1) {
@@ -491,7 +396,6 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // ---------- שלב 5: אם אין תוקף אחריות מפורש אבל יש start → שנה אחרי ----------
   if (!warrantyExpiresAt && warrantyStart && isValidYMD(warrantyStart)) {
     const [Y,M,D] = warrantyStart.split("-");
     const startDate = new Date(`${Y}-${M}-${D}T00:00:00`);
@@ -505,65 +409,42 @@ function extractWarrantyFromText(rawBufferMaybe) {
     }
   }
 
-  // ---------- שלב 6: autoDeleteAfter = שנתיים אחרי סוף האחריות ----------
+  // מחיקה אחרי 7 שנים מתאריך הקנייה
   let autoDeleteAfter = null;
-  if (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) {
-    const [Y2,M2,D2] = warrantyExpiresAt.split("-");
-    const expDate = new Date(`${Y2}-${M2}-${D2}T00:00:00`);
-    if (!Number.isNaN(expDate.getTime())) {
-      const del = new Date(expDate.getTime());
-      del.setMonth(del.getMonth() + 24);
-      const y3 = del.getFullYear();
-      const m3 = String(del.getMonth() + 1).padStart(2, "0");
-      const d3 = String(del.getDate()).padStart(2, "0");
-      autoDeleteAfter = `${y3}-${m3}-${d3}`;
+  if (warrantyStart && isValidYMD(warrantyStart)) {
+    const [yS,mS,dS] = warrantyStart.split("-");
+    const sDate = new Date(`${yS}-${mS}-${dS}T00:00:00`);
+    if (!Number.isNaN(sDate.getTime())) {
+      const del = new Date(sDate.getTime());
+      del.setFullYear(del.getFullYear() + 7);
+      const yy = del.getFullYear();
+      const mm = String(del.getMonth() + 1).padStart(2, "0");
+      const dd = String(del.getDate()).padStart(2, "0");
+      autoDeleteAfter = `${yy}-${mm}-${dd}`;
     }
   }
 
-  console.log("📤 extractWarrantyFromText() ->", {
-    warrantyStart,
-    warrantyExpiresAt,
-    autoDeleteAfter
-  });
-
   return {
-    warrantyStart: (warrantyStart && isValidYMD(warrantyStart)) ? warrantyStart : null,
+    warrantyStart:     (warrantyStart     && isValidYMD(warrantyStart))     ? warrantyStart     : null,
     warrantyExpiresAt: (warrantyExpiresAt && isValidYMD(warrantyExpiresAt)) ? warrantyExpiresAt : null,
     autoDeleteAfter
   };
 }
 
-
-
-
-
-
-// -------------------------------------------------
-// 3.3 fallback – אם לא הצלחנו בכלל לקרוא תאריכים,
-// נשאל את המשתמש ידנית (מה תאריך הקנייה? עד מתי האחריות?)
-// -------------------------------------------------
+// fallback ידני לתאריכי אחריות
 function fallbackAskWarrantyDetails() {
-  const startAns = prompt(
-    "לא הצלחתי לזהות אוטומטית.\nמה תאריך הקנייה? (למשל 28/10/2025)"
-  );
-  const expAns = prompt(
-    "עד מתי האחריות בתוקף? (למשל 28/10/2026)\nאם אין אחריות/לא רלוונטי אפשר לבטל."
-  );
-
-  function normalizeManualDate(str) {
+  const normalizeManualDate = (str) => {
     if (!str) return null;
     let s = str.trim().replace(/[.\/]/g, "-");
     const parts = s.split("-");
     if (parts.length === 3) {
       let [a,b,c] = parts;
       if (a.length === 4) {
-        // yyyy-mm-dd
         const yyyy = a;
         const mm = b.padStart(2, "0");
         const dd = c.padStart(2, "0");
         return `${yyyy}-${mm}-${dd}`;
       } else if (c.length === 4) {
-        // dd-mm-yyyy
         const yyyy = c;
         const mm = b.padStart(2, "0");
         const dd = a.padStart(2, "0");
@@ -571,15 +452,22 @@ function fallbackAskWarrantyDetails() {
       }
     }
     return s;
-  }
+  };
+
+  const startAns = prompt(
+    "לא הצלחתי לזהות אוטומטית.\nמה תאריך הקנייה? (למשל 28/10/2025)"
+  );
+  const expAns = prompt(
+    "עד מתי האחריות בתוקף? (למשל 28/10/2026)\nאם אין אחריות/לא רלוונטי אפשר לבטל."
+  );
 
   const warrantyStart = startAns ? normalizeManualDate(startAns) : null;
   const warrantyExpiresAt = expAns ? normalizeManualDate(expAns) : null;
 
   let autoDeleteAfter = null;
-  if (warrantyExpiresAt && /^\d{4}-\d{2}-\d{2}$/.test(warrantyExpiresAt)) {
-    const delDate = new Date(warrantyExpiresAt + "T00:00:00");
-    delDate.setMonth(delDate.getMonth() + 24);
+  if (warrantyStart && /^\d{4}-\d{2}-\d{2}$/.test(warrantyStart)) {
+    const delDate = new Date(warrantyStart + "T00:00:00");
+    delDate.setFullYear(delDate.getFullYear() + 7);
     autoDeleteAfter = delDate.toISOString().split("T")[0];
   }
 
@@ -590,9 +478,7 @@ function fallbackAskWarrantyDetails() {
   };
 }
 
-// -------------------------------------------------
-// 3.4 הודעות toast
-// -------------------------------------------------
+// טוסט
 function showNotification(message, isError = false) {
   const box = document.getElementById("notification");
   if (!box) return;
@@ -603,20 +489,13 @@ function showNotification(message, isError = false) {
   }, 3000);
 }
 
-// -------------------------------------------------
-// 3.5 ניקוי מסמכי אחריות שפג להם זמן השמירה
-// -------------------------------------------------
+// מחיקה אוטומטית למסמכי אחריות שפג תוקפם
 function purgeExpiredWarranties(docsArray) {
   const today = new Date();
   let changed = false;
-
   for (let i = docsArray.length - 1; i >= 0; i--) {
     const d = docsArray[i];
-    if (
-      d.category &&
-      d.category.includes("אחריות") &&
-      d.autoDeleteAfter
-    ) {
+    if (d.category && d.category.includes("אחריות") && d.autoDeleteAfter) {
       const deleteOn = new Date(d.autoDeleteAfter + "T00:00:00");
       if (today > deleteOn) {
         docsArray.splice(i, 1);
@@ -627,9 +506,7 @@ function purgeExpiredWarranties(docsArray) {
   return changed;
 }
 
-// -------------------------------------------------
-// 3.6 מיון
-// -------------------------------------------------
+// מיון
 let currentSortField = "uploadedAt";
 let currentSortDir   = "desc";
 
@@ -670,7 +547,7 @@ function sortDocs(docsArray) {
 }
 
 // -------------------------------------------------
-// 4. אפליקציה / UI
+// 4. אפליקציה
 // -------------------------------------------------
 document.addEventListener("DOMContentLoaded", async () => {
   const currentUser   = getCurrentUser();
@@ -689,22 +566,39 @@ document.addEventListener("DOMContentLoaded", async () => {
   const fileInput     = document.getElementById("fileInput");
   const sortSelect    = document.getElementById("sortSelect");
 
+  // אלמנטים של מודאל עריכה
+  const editModal           = document.getElementById("editModal");
+  const editForm            = document.getElementById("editForm");
+  const editCancelBtn       = document.getElementById("editCancelBtn");
+
+  const edit_title          = document.getElementById("edit_title");
+  const edit_org            = document.getElementById("edit_org");
+  const edit_year           = document.getElementById("edit_year");
+  const edit_recipient      = document.getElementById("edit_recipient");
+  const edit_warrantyStart  = document.getElementById("edit_warrantyStart");
+  const edit_warrantyExp    = document.getElementById("edit_warrantyExpiresAt");
+  const edit_autoDelete     = document.getElementById("edit_autoDeleteAfter");
+  const edit_category       = document.getElementById("edit_category");
+  const edit_sharedWith     = document.getElementById("edit_sharedWith");
+
+  let currentlyEditingDocId = null;
+
   let allUsersData = loadAllUsersDataFromStorage();
   let allDocsData  = getUserDocs(currentUser, allUsersData);
 
-  // אם המשתמש חדש לגמרי - נתחיל ריק
   if (!allDocsData || allDocsData.length === 0) {
     allDocsData = [];
     setUserDocs(currentUser, allDocsData, allUsersData);
   }
 
-  // ננקה מסמכי אחריות שפג להם הזמן
+  // מנקים מסמכי אחריות שפג תוקפם
   const removed = purgeExpiredWarranties(allDocsData);
   if (removed) {
     setUserDocs(currentUser, allDocsData, allUsersData);
     showNotification("מסמכי אחריות ישנים הוסרו אוטומטית");
   }
 
+  // מציגי כפתורי תיקיות בדף הבית
   function renderFolderItem(categoryName) {
     const folder = document.createElement("button");
     folder.className = "folder-card";
@@ -732,18 +626,30 @@ document.addEventListener("DOMContentLoaded", async () => {
     categoryView.classList.add("hidden");
   }
 
-  function buildDocCard(doc, mode, categoryNameForRefresh = null) {
+  // בונה כרטיס למסמך בודד
+  function buildDocCard(doc, mode) {
     const card = document.createElement("div");
     card.className = "doc-card";
 
     const warrantyBlock =
       (doc.category && doc.category.includes("אחריות")) ?
       `
+        <span>הועלה ב: ${doc.uploadedAt || "-"}</span>
         <span>תאריך קנייה: ${doc.warrantyStart || "-"}</span>
         <span>תוקף אחריות עד: ${doc.warrantyExpiresAt || "-"}</span>
         <span>מחיקה אוטומטית אחרי: ${doc.autoDeleteAfter || "-"}</span>
       `
-      : "";
+      : `
+        <span>הועלה ב: ${doc.uploadedAt || "-"}</span>
+      `;
+
+    // תמיד מציגים כפתור פתיחת קובץ
+    const openFileButtonHtml = `
+      <button class="doc-open-link"
+              data-open-id="${doc.id}">
+        פתיחת קובץ
+      </button>
+    `;
 
     card.innerHTML = `
       <p class="doc-card-title">${doc.title}</p>
@@ -752,18 +658,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         <span>ארגון: ${doc.org || "לא ידוע"}</span>
         <span>שנה: ${doc.year || "-"}</span>
         <span>שייך ל: ${doc.recipient?.join(", ") || "-"}</span>
-        <span>הועלה ב: ${doc.uploadedAt || "-"}</span>
         ${warrantyBlock}
       </div>
 
-      ${doc.fileUrl ? `
-        <a class="doc-open-link"
-           href="${doc.fileUrl}"
-           target="_self"
-           rel="noopener noreferrer">
-           פתיחת קובץ
-        </a>
-      ` : ""}
+      ${openFileButtonHtml}
 
       <div class="doc-actions"></div>
     `;
@@ -771,24 +669,39 @@ document.addEventListener("DOMContentLoaded", async () => {
     const actions = card.querySelector(".doc-actions");
 
     if (mode !== "recycle") {
+      // כפתור עריכה
+      const editBtn = document.createElement("button");
+      editBtn.className = "doc-action-btn";
+      editBtn.textContent = "עריכה ✏️";
+      editBtn.addEventListener("click", () => {
+        openEditModal(doc);
+      });
+      actions.appendChild(editBtn);
+
+      // כפתור סל מחזור
       const trashBtn = document.createElement("button");
       trashBtn.className = "doc-action-btn danger";
-      trashBtn.textContent = "🗑️ העבר לסל מחזור";
+      trashBtn.textContent = "העבר לסל מחזור 🗑️";
       trashBtn.addEventListener("click", () => {
         markDocTrashed(doc.id, true);
-        if (mode === "shared") {
+
+        // נשמור ונתרענן לפי הקטגוריה הנוכחית
+        const currentCat = categoryTitle.textContent;
+        if (currentCat === "אחסון משותף") {
           openSharedView();
-        } else if (categoryNameForRefresh) {
-          openCategoryView(categoryNameForRefresh);
+        } else if (currentCat === "סל מחזור") {
+          openRecycleView();
+        } else {
+          openCategoryView(currentCat);
         }
       });
       actions.appendChild(trashBtn);
-    }
 
-    if (mode === "recycle") {
+    } else {
+      // מצב סל מחזור: שחזור ומחיקה לצמיתות
       const restoreBtn = document.createElement("button");
       restoreBtn.className = "doc-action-btn restore";
-      restoreBtn.textContent = "♻️ שחזור";
+      restoreBtn.textContent = "שחזור ♻️";
       restoreBtn.addEventListener("click", () => {
         markDocTrashed(doc.id, false);
         openRecycleView();
@@ -796,7 +709,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const deleteBtn = document.createElement("button");
       deleteBtn.className = "doc-action-btn danger";
-      deleteBtn.textContent = "🗑️ מחיקה לצמיתות";
+      deleteBtn.textContent = "מחיקה לצמיתות 🗑️";
       deleteBtn.addEventListener("click", () => {
         deleteDocForever(doc.id);
         openRecycleView();
@@ -822,7 +735,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     docsList.innerHTML = "";
     docsForThisCategory.forEach(doc => {
-      const card = buildDocCard(doc, "normal", categoryName);
+      const card = buildDocCard(doc, "normal");
       docsList.appendChild(card);
     });
 
@@ -832,11 +745,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function renderDocsList(docs, mode = "normal") {
     const sortedDocs = sortDocs(docs);
-
     docsList.innerHTML = "";
-
     sortedDocs.forEach(doc => {
-      const card = buildDocCard(doc, mode, categoryTitle.textContent);
+      const card = buildDocCard(doc, mode);
       docsList.appendChild(card);
     });
 
@@ -876,199 +787,301 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // חשיפה לניווט בכפתורים שב-header
+  // מודאל עריכה
+  function openEditModal(doc) {
+    currentlyEditingDocId = doc.id;
+
+    edit_title.value         = doc.title            || "";
+    edit_org.value           = doc.org              || "";
+    edit_year.value          = doc.year             || "";
+    edit_recipient.value     = (doc.recipient || []).join(", ") || "";
+    edit_warrantyStart.value = doc.warrantyStart    || "";
+    edit_warrantyExp.value   = doc.warrantyExpiresAt|| "";
+    edit_autoDelete.value    = doc.autoDeleteAfter  || "";
+    edit_category.value      = doc.category         || "";
+    edit_sharedWith.value    = (doc.sharedWith || []).join(", ") || "";
+
+    editModal.classList.remove("hidden");
+  }
+
+  function closeEditModal() {
+    currentlyEditingDocId = null;
+    editModal.classList.add("hidden");
+  }
+
+  if (editCancelBtn) {
+    editCancelBtn.addEventListener("click", () => {
+      closeEditModal();
+    });
+  }
+
+  if (editForm) {
+    editForm.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+
+      if (!currentlyEditingDocId) {
+        closeEditModal();
+        return;
+      }
+
+      const idx = allDocsData.findIndex(d => d.id === currentlyEditingDocId);
+      if (idx === -1) {
+        closeEditModal();
+        return;
+      }
+
+      const updatedRecipients = edit_recipient.value
+        .split(",")
+        .map(s => s.trim())
+        .filter(s => s !== "");
+
+      const updatedShared = edit_sharedWith.value
+        .split(",")
+        .map(s => s.trim())
+        .filter(s => s !== "");
+
+      allDocsData[idx].title             = edit_title.value.trim() || allDocsData[idx].title;
+      allDocsData[idx].org               = edit_org.value.trim();
+      allDocsData[idx].year              = edit_year.value.trim();
+      allDocsData[idx].recipient         = updatedRecipients;
+      allDocsData[idx].warrantyStart     = edit_warrantyStart.value || "";
+      allDocsData[idx].warrantyExpiresAt = edit_warrantyExp.value   || "";
+      allDocsData[idx].autoDeleteAfter   = edit_autoDelete.value    || "";
+      allDocsData[idx].category          = edit_category.value.trim() || "";
+      allDocsData[idx].sharedWith        = updatedShared;
+
+      setUserDocs(currentUser, allDocsData, allUsersData);
+
+      const currentCat = categoryTitle.textContent;
+      if (currentCat === "אחסון משותף") {
+        openSharedView();
+      } else if (currentCat === "סל מחזור") {
+        openRecycleView();
+      } else {
+        openCategoryView(currentCat);
+      }
+
+      showNotification("המסמך עודכן בהצלחה");
+      closeEditModal();
+    });
+  }
+
+  // כפתורי ניווט בסיסיים
   window.App = {
     renderHome,
     openSharedView,
     openRecycleView
   };
 
-  backButton.addEventListener("click", () => {
-    renderHome();
-  });
+  if (backButton) {
+    backButton.addEventListener("click", () => {
+      renderHome();
+    });
+  }
 
-  // טיפול בלחיצה על "העלאת קובץ"
-  uploadBtn.addEventListener("click", () => {
-    fileInput.click();
-  });
+  if (uploadBtn && fileInput) {
+    uploadBtn.addEventListener("click", () => {
+      fileInput.click();
+    });
+  }
 
-  // מיון
   if (sortSelect) {
     sortSelect.addEventListener("change", () => {
       const [field, dir] = sortSelect.value.split("-");
       currentSortField = field;
-      currentSortDir = dir;
+      currentSortDir   = dir;
       if (!categoryView.classList.contains("hidden")) {
         openCategoryView(categoryTitle.textContent);
       }
     });
   }
 
-  // הטיפול הראשי בהעלאת קובץ
-  fileInput.addEventListener("change", async () => {
-    const file = fileInput.files[0];
-    if (!file) {
-      showNotification("❌ לא נבחר קובץ", true);
-      return;
-    }
-
-    try {
-      const fileName = file.name.trim();
-
-      // למנוע כפילויות
-      const alreadyExists = allDocsData.some(doc => {
-        return (
-          doc.originalFileName === fileName &&
-          doc._trashed !== true
-        );
-      });
-      if (alreadyExists) {
-        showNotification("הקובץ הזה כבר קיים בארכיון שלך", true);
-        fileInput.value = "";
+  // העלאת קובץ ושמירה אמיתית ב-localStorage
+  if (fileInput) {
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files[0];
+      if (!file) {
+        showNotification("❌ לא נבחר קובץ", true);
         return;
       }
 
-      // ניחוש קטגוריה לפי שם
-      let guessedCategory = guessCategoryForFileNameOnly(file.name);
-      if (!guessedCategory || guessedCategory === "אחר") {
-        const manual = prompt(
-          'לא זיהיתי אוטומטית את סוג המסמך.\nלאיזו תיקייה לשמור?\nאפשרויות: ' +
-          CATEGORIES.join(", "),
-          "רפואה"
-        );
-        if (manual && manual.trim() !== "") {
-          guessedCategory = manual.trim();
-        } else {
-          guessedCategory = "אחר";
+      try {
+        const fileName = file.name.trim();
+
+        // למנוע כפילות בשם
+        const alreadyExists = allDocsData.some(doc => {
+          return (
+            doc.originalFileName === fileName &&
+            doc._trashed !== true
+          );
+        });
+        if (alreadyExists) {
+          showNotification("הקובץ הזה כבר קיים בארכיון שלך", true);
+          fileInput.value = "";
+          return;
         }
+
+        // ניחוש קטגוריה
+        let guessedCategory = guessCategoryForFileNameOnly(file.name);
+        if (!guessedCategory || guessedCategory === "אחר") {
+          const manual = prompt(
+            'לא זיהיתי אוטומטית את סוג המסמך.\nלאיזו תיקייה לשמור?\nאפשרויות: ' +
+            CATEGORIES.join(", "),
+            "רפואה"
+          );
+          if (manual && manual.trim() !== "") {
+            guessedCategory = manual.trim();
+          } else {
+            guessedCategory = "אחר";
+          }
+        }
+
+        // חילוץ אחריות אם זו אחריות
+        let warrantyStart = null;
+        let warrantyExpiresAt = null;
+        let autoDeleteAfter = null;
+
+        if (guessedCategory === "אחריות") {
+          let extracted = {
+            warrantyStart: null,
+            warrantyExpiresAt: null,
+            autoDeleteAfter: null,
+          };
+
+          // OCR PDF
+          if (file.type === "application/pdf") {
+            const ocrText = await extractTextFromPdfWithOcr(file);
+            const dataFromText = extractWarrantyFromText(ocrText);
+            extracted = { ...extracted, ...dataFromText };
+          }
+
+          // OCR תמונה
+          if (file.type.startsWith("image/") && window.Tesseract) {
+            const { data } = await window.Tesseract.recognize(file, "heb+eng", {
+              tessedit_pageseg_mode: 6,
+            });
+            const imgText = data?.text || "";
+            const dataFromText = extractWarrantyFromText(imgText);
+            extracted = { ...extracted, ...dataFromText };
+          }
+
+          // fallback גולמי אם OCR לא עבד
+          if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
+            const buf = await file.arrayBuffer().catch(() => null);
+            if (buf) {
+              const txt = new TextDecoder("utf-8").decode(buf);
+              const dataFromText = extractWarrantyFromText(txt);
+              extracted = { ...extracted, ...dataFromText };
+            }
+          }
+
+          // fallback לשאלות ידני
+          if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
+            const manualData = fallbackAskWarrantyDetails();
+            if (manualData.warrantyStart) {
+              extracted.warrantyStart = manualData.warrantyStart;
+            }
+            if (manualData.warrantyExpiresAt) {
+              extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
+            }
+            if (manualData.autoDeleteAfter) {
+              extracted.autoDeleteAfter = manualData.autoDeleteAfter;
+            }
+          }
+
+          warrantyStart     = extracted.warrantyStart     || null;
+          warrantyExpiresAt = extracted.warrantyExpiresAt || null;
+          autoDeleteAfter   = extracted.autoDeleteAfter   || null;
+        }
+
+        // קוראים את הקובץ ל-base64
+        const fileDataBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            resolve(reader.result); // data:...base64
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+
+        // בונים האובייקט שישמר
+        const newDoc = {
+          id: crypto.randomUUID(),
+          title: fileName,
+          originalFileName: fileName,
+          category: guessedCategory,
+          uploadedAt: new Date().toISOString().split("T")[0],
+          year: new Date().getFullYear().toString(),
+          org: "",
+          recipient: [],
+          sharedWith: [],
+
+          warrantyStart,
+          warrantyExpiresAt,
+          autoDeleteAfter,
+
+          mimeType: file.type,
+          fileDataBase64: fileDataBase64,
+        };
+
+        // מוסיפים ושומרים ב-localStorage לפני כל דבר אחר
+        allDocsData.push(newDoc);
+        setUserDocs(currentUser, allDocsData, allUsersData);
+
+        showNotification("הקובץ נוסף לארכיון ✅");
+
+        // מרעננים את המסך הנוכחי (כדי שתראי אותו מיד)
+        const currentCat = categoryTitle.textContent;
+        if (currentCat === "אחסון משותף") {
+          openSharedView();
+        } else if (currentCat === "סל מחזור") {
+          openRecycleView();
+        } else if (!homeView.classList.contains("hidden")) {
+          renderHome();
+        } else {
+          openCategoryView(currentCat);
+        }
+
+        fileInput.value = "";
+
+      } catch (err) {
+        console.error("שגיאה חלקית בהעלאה/ניתוח:", err);
+        showNotification("הקובץ נשמר אבל היתה בעיה בזיהוי האוטומטי (זה בסדר)", true);
       }
-
-      // ערכי אחריות שננסה למלא
-      let warrantyStart = null;
-      let warrantyMonths = null;
-      let warrantyExpiresAt = null;
-      let autoDeleteAfter = null;
-
-     if (guessedCategory === "אחריות") {
-  console.log("🔅 קובץ בקטגורית 'אחריות' => מפעילים OCR וניתוח");
-
-  let extracted = {
-    warrantyStart: null,
-    warrantyExpiresAt: null,
-    autoDeleteAfter: null,
-  };
-
-  // 1. PDF -> OCR לעמוד הראשון
-  if (file.type === "application/pdf") {
-    const ocrText = await extractTextFromPdfWithOcr(file);
-    window.__lastOcrText = ocrText;
-    console.log("OCR raw text >>>", ocrText);
-
-    const dataFromText = extractWarrantyFromText(ocrText);
-    extracted = { ...extracted, ...dataFromText };
-  }
-
-  // 2. תמונה -> OCR ישיר
-  if (file.type.startsWith("image/")) {
-    const { data } = await Tesseract.recognize(file, "heb+eng", {
-      tessedit_pageseg_mode: 6,
     });
-    const imgText = data?.text || "";
-    window.__lastOcrText = imgText;
-    console.log("OCR raw text (image) >>>", imgText);
-
-    const dataFromText = extractWarrantyFromText(imgText);
-    extracted = { ...extracted, ...dataFromText };
   }
 
-  // 3. fallback לטקסט גולמי (במקרה שקיבלנו קובץ טקסטואלי)
-  if (!window.__lastOcrText) {
-    const buf = await file.arrayBuffer().catch(() => null);
-    if (buf) {
-      const txt = new TextDecoder("utf-8").decode(buf);
-      window.__lastOcrText = txt;
-      console.log("Raw text fallback >>>", txt);
+  // האזנה גלובלית לכפתור "פתיחת קובץ"
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-open-id]");
+    if (!btn) return;
 
-      const dataFromText = extractWarrantyFromText(txt);
-      extracted = { ...extracted, ...dataFromText };
+    const docId = btn.getAttribute("data-open-id");
+    const docObj = allDocsData.find(d => d.id === docId);
+
+    if (!docObj) {
+      showNotification("לא נמצא המסמך", true);
+      return;
     }
-  }
 
-  console.log("📦 extracted BEFORE prompt:", extracted);
-
-  // 4. אם עדיין אין לנו תאריך בכלל -> נשאל אותך ידנית
-  if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
-    const manualData = fallbackAskWarrantyDetails(); // עושה prompt
-    if (manualData.warrantyStart) {
-      extracted.warrantyStart = manualData.warrantyStart;
+    if (!docObj.fileDataBase64) {
+      showNotification("אין קובץ שמור בפנים. תעלי את המסמך הזה מחדש 💾", true);
+      return;
     }
-    if (manualData.warrantyExpiresAt) {
-      extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
-    }
-    if (manualData.autoDeleteAfter) {
-      extracted.autoDeleteAfter = manualData.autoDeleteAfter;
-    }
-  }
 
-  console.log("✅ extracted AFTER prompt:", extracted);
-
-  // 5. עכשיו זה נכנס לשדות הסופיים שנשמרים במסמך
-  warrantyStart     = extracted.warrantyStart || null;
-  warrantyExpiresAt = extracted.warrantyExpiresAt || null;
-  autoDeleteAfter   = extracted.autoDeleteAfter || null;
-
-  console.log("💾 values going into save:", {
-    warrantyStart,
-    warrantyExpiresAt,
-    autoDeleteAfter
-  });
-}
-
-
-
-      // עכשיו בונים את הרשומה לשמירה
-      const now = new Date();
-      const uploadedAt = now.toLocaleString("he-IL", {
-        dateStyle: "short",
-        timeStyle: "short"
-      });
-      const fileObjectUrl = URL.createObjectURL(file);
-
-      const newDoc = {
-        id: "doc-" + Date.now(),
-        title: fileName.replace(/\.[^/.]+$/, ""),
-        org: "לא ידוע",        // בעתיד אפשר למלא לפי OCR "ספק"/"חברה"
-        year: now.getFullYear(),
-        recipient: ["אני"],    // למי שייך הבעלות
-        category: [guessedCategory],
-        sharedWith: [],
-        fileUrl: fileObjectUrl,
-        uploadedAt: uploadedAt,
-        originalFileName: fileName,
-        _trashed: false,
-
-        // אחריות:
-        warrantyStart,
-        warrantyMonths,
-        warrantyExpiresAt,
-        autoDeleteAfter
-      };
-
-      // שמירה למשתמש הנוכחי
-      allDocsData.push(newDoc);
-      setUserDocs(currentUser, allDocsData, allUsersData);
-
-      showNotification(`המסמך נשמר בתיקייה: ${guessedCategory} ✔️`);
-
-      // נחזור למסך הבית ונראה עדכון
-      renderHome();
-      fileInput.value = "";
-    } catch (err) {
-      console.error(err);
-      showNotification("❌ תקלה בהעלאה – נסי שוב", true);
-    }
+    // במקום window.open(...dataURL...) שיכול להיחסם,
+    // ניצור לינק <a> עם download או פתיחה ישירה ונלחץ עליו.
+    const a = document.createElement("a");
+    a.href = docObj.fileDataBase64;
+    // אם זה PDF/תמונה - הדפדפן יציג. אם זה מסמך אחר - יוריד.
+    a.download = docObj.originalFileName || "file";
+    // נוודא פתיחה בחלון חדש במקרה שזה ניתן להציג:
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   });
 
-  // רנדר ראשון
+  // נתחיל מהמסך הראשי
   renderHome();
 });
