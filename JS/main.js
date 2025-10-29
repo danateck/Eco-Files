@@ -1144,9 +1144,9 @@ function openSharedView() {
     }
 
 
-    const raw = (emailInput?.value || "");
 
     // --- שלח הזמנה ---
+// --- שלח הזמנה ---
 const inviteId = t.getAttribute?.("data-invite");
 if (inviteId) {
   // נמצא את השורה של הכפתור ואז את שדה המייל בשורה הזו
@@ -1182,10 +1182,10 @@ if (inviteId) {
   }
 
   // הוספת בקשה יוצאת אצלי
-  const me = allUsersData[userNow];
-  me.outgoingShareRequests.push({
+  const meUser = allUsersData[userNow];
+  meUser.outgoingShareRequests.push({
     folderId: inviteId,
-    folderName: me.sharedFolders[inviteId]?.name || "",
+    folderName: meUser.sharedFolders[inviteId]?.name || "",
     toEmail: targetEmail,
     status: "pending"
   });
@@ -1194,7 +1194,7 @@ if (inviteId) {
   ensureUserSharedFields(allUsersData, targetUname);
   allUsersData[targetUname].incomingShareRequests.push({
     folderId: inviteId,
-    folderName: me.sharedFolders[inviteId]?.name || "",
+    folderName: meUser.sharedFolders[inviteId]?.name || "",
     fromEmail: myEmail,
     status: "pending"
   });
@@ -1204,6 +1204,7 @@ if (inviteId) {
   emailEl.value = "";
   return;
 }
+
 
   });
 
