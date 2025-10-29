@@ -653,6 +653,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   let allUsersData = loadAllUsersDataFromStorage();
   let allDocsData  = getUserDocs(userNow, allUsersData);
 
+
+  // === INIT shared fields (run once after loading allUsersData/allDocsData) ===
+function ensureUserSharedFields(allUsersData, username) {
+  if (!allUsersData[username]) allUsersData[username] = { password: "", docs: [] };
+  const u = allUsersData[username];
+  if (!u.email) u.email = username; // נשתמש בשם ככתובת אם אין
+  if (!u.sharedFolders) u.sharedFolders = {}; // {folderId: {name, owner, members:[]}}
+  if (!u.incomingShareRequests) u.incomingShareRequests = []; // [{folderId, folderName, fromEmail, status}]
+  if (!u.outgoingShareRequests) u.outgoingShareRequests = []; // [{folderId, toEmail, status}]
+}
+function findUsernameByEmail(allUsersData, email) {
+  for (const [uname, u] of Object.entries(allUsersData)) {
+    if ((u.email || uname).toLowerCase() === email.toLowerCase()) return uname;
+  }
+  return null;
+}
+ensureUserSharedFields(allUsersData, userNow);
+saveAllUsersDataToStorage(allUsersData);
+          
   if (!allDocsData || allDocsData.length === 0) {
     allDocsData = [];
     setUserDocs(userNow, allDocsData, allUsersData);
@@ -759,6 +778,37 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       actions.appendChild(trashBtn);
 
+      // כפתור: הכנס לתיקייה משותפת
+const addToSharedBtn = document.createElement("button");
+addToSharedBtn.className = "doc-action-btn";
+addToSharedBtn.textContent = "הכנס לתיקייה משותפת";
+addToSharedBtn.addEventListener("click", () => {
+  const me = allUsersData[userNow];
+  const folders = Object.entries(me.sharedFolders || {});
+  if (!folders.length) {
+    showNotification("אין לך עדיין תיקיות משותפות. צרי אחת במסך 'אחסון משותף'.", true);
+    return;
+  }
+  // בוחרים תיקייה ע"י prompt פשוט
+  const options = folders.map(([fid, f]) => `${f.name} [${fid}]`).join("\n");
+  const pick = prompt("בחרי תיקייה (הדביקי את ה-ID שבסוגריים):\n" + options);
+  if (!pick) return;
+  const chosen = folders.find(([fid]) => fid === pick.trim());
+  if (!chosen) { showNotification("Folder ID לא נמצא", true); return; }
+
+  const [folderId] = chosen;
+  // עדכון המסמך
+  const docId = doc.id;
+  const i = allDocsData.findIndex(d => d.id === docId);
+  if (i > -1) {
+    allDocsData[i].sharedFolderId = folderId;
+    setUserDocs(userNow, allDocsData, allUsersData);
+    showNotification("המסמך שויך לתיקייה המשותפת");
+  }
+});
+actions.appendChild(addToSharedBtn);
+
+
     } else {
       const restoreBtn = document.createElement("button");
       restoreBtn.className = "doc-action-btn restore";
@@ -816,13 +866,294 @@ document.addEventListener("DOMContentLoaded", async () => {
     categoryView.classList.remove("hidden");
   }
 
-  function openSharedView() {
-    categoryTitle.textContent = "אחסון משותף";
-    const docs = allDocsData.filter(
-      d => Array.isArray(d.sharedWith) && d.sharedWith.length > 0 && !d._trashed
-    );
-    renderDocsList(docs, "shared");
+  // === HELPER: אסוף מסמכים מכל המשתמשים לתיקייה משותפת מסוימת ===
+function collectSharedFolderDocs(allUsersData, folderId) {
+  const list = [];
+  for (const [uname, u] of Object.entries(allUsersData)) {
+    const docs = (u.docs || []);
+    for (const d of docs) {
+      if (!d._trashed && d.sharedFolderId === folderId) {
+        // מצרפים גם שם מעלה המסמך:
+        list.push({ ...d, _ownerEmail: u.email || uname });
+      }
+    }
   }
+  return list;
+}
+
+// === UI: רינדור ניהול תיקיות משותפות + בקשות ממתינות ===
+function openSharedView() {
+  categoryTitle.textContent = "אחסון משותף";
+  docsList.innerHTML = "";
+
+  const me = allUsersData[userNow];
+  const myEmail = (me.email || userNow);
+
+  // קונטיינר עליון לניהול תיקיות
+  const manage = document.createElement("div");
+  manage.className = "shared-manage";
+  manage.style.display = "grid";
+  manage.style.gap = "12px";
+  manage.style.marginBottom = "16px";
+
+  // יצירת תיקייה
+  const createRow = document.createElement("div");
+  createRow.innerHTML = `
+    <strong>תיקיות משותפות</strong><br>
+    <input id="sf_new_name" placeholder="שם תיקייה חדשה" style="padding:.4rem; border:1px solid #bbb; border-radius:6px;">
+    <button id="sf_create_btn" class="doc-action-btn">צור תיקייה</button>
+  `;
+  manage.appendChild(createRow);
+
+  // רשימת תיקיות קיימות
+  const listRow = document.createElement("div");
+  listRow.innerHTML = `<div id="sf_list" style="display:flex; flex-direction:column; gap:8px;"></div>`;
+  manage.appendChild(listRow);
+
+  // בקשות ממתינות
+  const pendingRow = document.createElement("div");
+  pendingRow.innerHTML = `
+    <strong>בקשות ממתינות</strong>
+    <div id="sf_pending" style="display:flex; flex-direction:column; gap:8px;"></div>
+  `;
+  manage.appendChild(pendingRow);
+
+  docsList.appendChild(manage);
+
+  // רינדור תיקיות
+  function renderSharedFoldersList() {
+    const wrap = listRow.querySelector("#sf_list");
+    wrap.innerHTML = "";
+
+    // כל התיקיות שאני בעלים/חברה בהן (אצלי ב־sharedFolders)
+    const sfs = me.sharedFolders || {};
+    const entries = Object.entries(sfs);
+
+    if (!entries.length) {
+      wrap.innerHTML = `<div style="opacity:.7">אין עדיין תיקיות משותפות</div>`;
+      return;
+    }
+
+    for (const [fid, folder] of entries) {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.gap = "8px";
+      row.style.alignItems = "center";
+
+      row.innerHTML = `
+        <input data-fid="${fid}" class="sf_name_input" value="${folder.name}"
+               style="flex:1; padding:.35rem; border:1px solid #bbb; border-radius:6px;">
+        <button data-open="${fid}" class="doc-action-btn">פתח תיקייה</button>
+        <button data-rename="${fid}" class="doc-action-btn">שנה שם</button>
+        <input data-email="${fid}" placeholder="הוסף מייל לשיתוף" style="padding:.35rem; border:1px solid #bbb; border-radius:6px;">
+        <button data-invite="${fid}" class="doc-action-btn">שלח הזמנה</button>
+      `;
+      wrap.appendChild(row);
+    }
+  }
+
+  // רינדור בקשות ממתינות
+  function renderPending() {
+    const wrap = pendingRow.querySelector("#sf_pending");
+    wrap.innerHTML = "";
+    const list = (me.incomingShareRequests || []).filter(r => r.status === "pending");
+    if (!list.length) {
+      wrap.innerHTML = `<div style="opacity:.7">אין בקשות ממתינות</div>`;
+      return;
+    }
+    for (const req of list) {
+      const line = document.createElement("div");
+      line.style.display = "flex";
+      line.style.alignItems = "center";
+      line.style.gap = "8px";
+      line.innerHTML = `
+        הזמנה לתיקייה "<b>${req.folderName}</b>" מאת ${req.fromEmail}
+        <button class="doc-action-btn" data-accept="${req.folderId}">אשר</button>
+        <button class="doc-action-btn danger" data-reject="${req.folderId}">סרב</button>
+      `;
+      wrap.appendChild(line);
+    }
+  }
+
+  renderSharedFoldersList();
+  renderPending();
+
+  // האזנות
+  // צור תיקייה
+  createRow.querySelector("#sf_create_btn").addEventListener("click", () => {
+    const name = createRow.querySelector("#sf_new_name").value.trim();
+    if (!name) { showNotification("צריך שם תיקייה", true); return; }
+    const fid = crypto.randomUUID();
+    me.sharedFolders[fid] = { name, owner: myEmail, members: [myEmail] };
+    saveAllUsersDataToStorage(allUsersData);
+    renderSharedFoldersList();
+    showNotification(`נוצרה תיקייה "${name}"`);
+  });
+
+  // הקלקות על כפתורים בתוך רשימת התיקיות
+  listRow.addEventListener("click", (ev) => {
+    const t = ev.target;
+    // פתח תיקייה
+    const openId = t.getAttribute?.("data-open");
+    if (openId) {
+      // נאסוף מסמכים מכל המשתמשים לתיקייה הזו ונציג
+      const docs = collectSharedFolderDocs(allUsersData, openId);
+      categoryTitle.textContent = `תיקייה משותפת: ${me.sharedFolders[openId]?.name || ""}`;
+      docsList.innerHTML = "";
+      const sorted = sortDocs(docs);
+      for (const d of sorted) {
+        const card = buildDocCard(d, "shared"); // מצב shared – בלי מחיקה לצמיתות וכו'
+        // נציג גם מי הבעלים המקורי של הקובץ
+        const meta = card.querySelector(".doc-card-meta");
+        if (meta) {
+          const span = document.createElement("span");
+          span.textContent = `הועלה ע"י: ${d._ownerEmail || "-"}`;
+          meta.appendChild(span);
+        }
+        docsList.appendChild(card);
+      }
+      return;
+    }
+
+    // שנה שם
+    const renameId = t.getAttribute?.("data-rename");
+    if (renameId) {
+      const input = listRow.querySelector(`.sf_name_input[data-fid="${renameId}"]`);
+      const newName = (input?.value || "").trim();
+      if (!newName) { showNotification("שם תיקייה לא יכול להיות ריק", true); return; }
+
+      // מעדכן שם תיקייה אצל כל החברים (שיהיה עקבי לכולם)
+      for (const [uname, u] of Object.entries(allUsersData)) {
+        if (u.sharedFolders && u.sharedFolders[renameId]) {
+          u.sharedFolders[renameId].name = newName;
+        }
+        // מעדכן גם בבקשות תלויות
+        (u.incomingShareRequests || []).forEach(r => { if (r.folderId === renameId) r.folderName = newName; });
+        (u.outgoingShareRequests || []).forEach(r => { if (r.folderId === renameId) r.folderName = newName; });
+      }
+
+      saveAllUsersDataToStorage(allUsersData);
+      renderSharedFoldersList();
+      showNotification("שם התיקייה עודכן");
+      return;
+    }
+
+    // שלח הזמנה
+    const inviteId = t.getAttribute?.("data-invite");
+    if (inviteId) {
+      const emailInput = listRow.querySelector(`input[placeholder="הוסף מייל לשיתוף"][data-email="${inviteId}"]`);
+      const targetEmail = (emailInput?.value || "").trim();
+      if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
+
+      const targetUname = findUsernameByEmail(allUsersData, targetEmail);
+      if (!targetUname) { showNotification("אין אדם כזה (מייל לא קיים במערכת)", true); return; }
+
+      // לא מזמינים את עצמי שוב
+      if (targetEmail.toLowerCase() === myEmail.toLowerCase()) {
+        showNotification("את כבר חברה בתיקייה הזו", true); return;
+      }
+
+      // הוספת בקשה יוצאת אצלי
+      me.outgoingShareRequests.push({
+        folderId: inviteId,
+        folderName: me.sharedFolders[inviteId]?.name || "",
+        toEmail: targetEmail,
+        status: "pending"
+      });
+
+      // הוספת בקשה נכנסת אצלו
+      ensureUserSharedFields(allUsersData, targetUname);
+      allUsersData[targetUname].incomingShareRequests.push({
+        folderId: inviteId,
+        folderName: me.sharedFolders[inviteId]?.name || "",
+        fromEmail: myEmail,
+        status: "pending"
+      });
+
+      saveAllUsersDataToStorage(allUsersData);
+      showNotification("הזמנה נשלחה (ממתין לאישור)");
+      emailInput.value = "";
+      return;
+    }
+  });
+
+  // אישור/דחייה של בקשות
+  pendingRow.addEventListener("click", (ev) => {
+    const t = ev.target;
+    const accId = t.getAttribute?.("data-accept");
+    const rejId = t.getAttribute?.("data-reject");
+
+    if (!accId && !rejId) return;
+
+    const list = me.incomingShareRequests || [];
+    const req = list.find(r => r.folderId === (accId || rejId) && r.status === "pending");
+    if (!req) return;
+
+    // מצא את בעל התיקייה לפי האימייל שלו
+    const ownerUname = findUsernameByEmail(allUsersData, req.fromEmail);
+    if (!ownerUname) { showNotification("שגיאה: בעל התיקייה לא נמצא", true); return; }
+    const owner = allUsersData[ownerUname];
+
+    if (accId) {
+      // ודא שלמקבל יש את התיקייה ברשימה שלו
+      ensureUserSharedFields(allUsersData, userNow);
+      if (!me.sharedFolders[req.folderId]) {
+        me.sharedFolders[req.folderId] = {
+          name: req.folderName,
+          owner: req.fromEmail,
+          members: [req.fromEmail] // יתעדכן מיד למטה
+        };
+      }
+
+      // הוסף את המייל שלי כחבר אצל כולם
+      const myE = (me.email || userNow);
+      // אצל הבעלים:
+      if (!owner.sharedFolders[req.folderId]) {
+        owner.sharedFolders[req.folderId] = {
+          name: req.folderName,
+          owner: req.fromEmail,
+          members: [req.fromEmail]
+        };
+      }
+      if (!owner.sharedFolders[req.folderId].members.includes(myE)) {
+        owner.sharedFolders[req.folderId].members.push(myE);
+      }
+      // אצלי:
+      if (!me.sharedFolders[req.folderId].members.includes(myE)) {
+        me.sharedFolders[req.folderId].members.push(myE);
+      }
+
+      // עדכן סטטוס
+      req.status = "accepted";
+      // עדכן גם ב-outgoing של הבעלים
+      (owner.outgoingShareRequests || []).forEach(o => {
+        if (o.folderId === req.folderId && o.toEmail.toLowerCase() === myE.toLowerCase() && o.status === "pending") {
+          o.status = "accepted";
+        }
+      });
+
+      saveAllUsersDataToStorage(allUsersData);
+      renderPending();
+      showNotification("הצטרפת לתיקייה המשותפת ✔️");
+    }
+
+    if (rejId) {
+      req.status = "rejected";
+      (owner.outgoingShareRequests || []).forEach(o => {
+        if (o.folderId === req.folderId && o.toEmail.toLowerCase() === (me.email||userNow).toLowerCase() && o.status === "pending") {
+          o.status = "rejected";
+        }
+      });
+      saveAllUsersDataToStorage(allUsersData);
+      renderPending();
+      showNotification("הזמנה נדחתה");
+    }
+  });
+
+  homeView.classList.add("hidden");
+  categoryView.classList.remove("hidden");
+}
+
 
   function openRecycleView() {
     categoryTitle.textContent = "סל מחזור";
