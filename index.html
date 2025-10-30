@@ -12,6 +12,11 @@
   <link rel="stylesheet" href="./CSS/main.css" />
 
   <style>
+
+
+
+
+
     .doc-actions{margin-top:auto;display:flex;gap:.5rem;flex-wrap:wrap}
     .doc-action-btn{border:1px solid var(--border-soft);background:#fff;border-radius:6px;
       padding:.35rem .55rem;font-size:.7rem;cursor:pointer}
@@ -692,6 +697,9 @@
 /* כשאנחנו במצב אחסון משותף, docsList לא יהיה grid של כרטיסים */
 .docs-list.shared-mode {
   display: block;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
+  gap: 16px !important;
+
   width: 100%;
 }
 
@@ -702,6 +710,7 @@
  {
   margin-top: 14px !important;    /* רווח מלמעלה לכל בלוק */
 }
+
 
 
 
@@ -718,8 +727,7 @@
 
 
 .sf-list {
-    display: flex !important
-;
+    display: flex !important;
     gap: 16px !important;
     width: 100%;
     flex-wrap: nowrap;
@@ -747,6 +755,50 @@ element.style {
 
 
 
+
+
+
+
+.shared-view {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.shared-block {
+  background: #2e2512;
+  border: 1px solid #515e56;
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 24px;
+  color: #cfe2df;
+  box-shadow: 0 12px 28px rgba(0,0,0,.22);
+}
+
+.shared-block h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.docs-list.shared-mode {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+
+
+
+
+
+
+
+
+
+/* ==== TETROMINO ANIMATION ==== */
 
 /* אריח בודד */
 .tetromino {
@@ -853,6 +905,12 @@ element.style {
   font-weight: 600 !important;
   color: #fff !important;
 }
+
+
+
+
+
+
 
 
   </style>
@@ -997,6 +1055,47 @@ element.style {
 
           <div class="docs-list" id="docsList"></div>
         </section>
+
+
+        <!-- === אחסון משותף === -->
+<section class="shared-view hidden" id="sharedView">
+  <div class="shared-container">
+
+    <!-- בלוק ראשון: בקשות ממתינות -->
+    <section class="shared-block pending-wrap">
+      <div class="cozy-head">
+        <h3>בקשות ממתינות</h3>
+      </div>
+      <div id="pendingList" class="sf-list">
+        <!-- כאן ייכנסו בקשות ממתינות -->
+      </div>
+    </section>
+
+    <!-- בלוק שני: תיקיות משותפות -->
+    <section class="shared-block folders-wrap">
+      <div class="cozy-head">
+        <h3>תיקיות משותפות</h3>
+        <button class="btn-cozy" id="createSharedFolderBtn">➕ צור תיקייה משותפת</button>
+      </div>
+      <div id="sharedFoldersGrid" class="docs-list shared-mode">
+        <!-- כאן ייכנסו התיקיות -->
+      </div>
+    </section>
+
+    <!-- בלוק שלישי: מסמכים משותפים -->
+    <section class="shared-block documents-wrap">
+      <div class="cozy-head">
+        <h3>מסמכים משותפים</h3>
+      </div>
+      <div id="sharedDocsList" class="docs-list shared-mode">
+        <!-- כאן ייכנסו המסמכים -->
+      </div>
+    </section>
+
+  </div>
+</section>
+
+
       </div>
     </section>
   </div><!-- /dashboard -->
