@@ -1195,17 +1195,20 @@ wrap.className = "shared-container";
       docsList.appendChild(membersList);
 
       // כותרת "מסמכים משותפים"
-      const docsHead = document.createElement("div");
-      docsHead.className = "cozy-head";
-      docsHead.innerHTML = `<h3 style="margin:0;">מסמכים משותפים</h3><div></div>`;
-      docsList.appendChild(docsHead);
+const docsHead = document.createElement("div");
+docsHead.className = "cozy-head";
+docsHead.innerHTML = `<h3 style="margin:0;">מסמכים משותפים</h3><div></div>`;
+docsList.appendChild(docsHead);
 
-      // מסמכים
-      const docsBox = document.createElement("div");
-      docsBox.style.display = "grid";
-      docsBox.style.gap = "12px";
-      
-      docsList.appendChild(docsBox);
+// קונטיינר הכרטיסיות – גריד רספונסיבי
+const docsBox = document.createElement("div");
+docsBox.style.display = "grid";
+docsBox.style.gap = "24px";
+docsBox.style.gridTemplateColumns = "repeat(auto-fit, minmax(260px, 1fr))";
+docsBox.style.alignItems = "start";
+docsBox.style.justifyItems = "stretch";
+docsList.appendChild(docsBox);
+
 
       const docs = collectSharedFolderDocs(allUsersData, openId);
       const sorted = sortDocs(docs);
