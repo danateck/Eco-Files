@@ -68,6 +68,43 @@ async function deleteFileFromDB(docId) {
 }
 
 
+
+// איפשהו אחרי ההתחברות המוצלחת
+import { doc, setDoc, getFirestore } from "firebase/firestore";
+const db = window.db || getFirestore();
+
+async function upsertUserProfile({ uid, email, displayName }) {
+  const key = email.trim().toLowerCase();
+  await setDoc(doc(db, "users", key), {
+    email: key, uid: uid || null, displayName: displayName || null,
+    updatedAt: Date.now()
+  }, { merge: true });
+}
+
+
+
+
+function listenInvitesForMe() {
+  const myEmail = (allUsersData[userNow].email || userNow).toLowerCase();
+  const q = query(collection(db, "invites"),
+                  where("toEmail", "==", myEmail),
+                  where("status", "==", "pending"));
+
+  onSnapshot(q, (snap) => {
+    const me = allUsersData[userNow];
+    me.incomingShareRequests = [];
+    snap.forEach(d => me.incomingShareRequests.push(d.data()));
+    saveAllUsersDataToStorage(allUsersData);
+    // אם יש לך רנדר של pending, קראי לו כאן
+    // renderPending();
+  });
+}
+// אחרי שטענת את allUsersData
+listenInvitesForMe();
+
+
+
+
 /*************************
  * 1. קטגוריות / מילות מפתח
  *************************/
@@ -1224,24 +1261,50 @@ docsList.appendChild(docsBox);
       }
 
       // לחצן הזמנה במסך פרטי התיקייה — אותה לוגיקה בדיוק
-      membersBar.querySelector("#detail_inv_btn").addEventListener("click", () => {
-        const emailEl = membersBar.querySelector("#detail_inv_email");
-        const targetEmail = (emailEl.value || "").trim().toLowerCase();
-        if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
+      // ב-main.js, בתוך ה-click handler של #detail_inv_btn
+import {
+  doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, onSnapshot
+} from "firebase/firestore";
 
-        const targetUname = findUsernameByEmail(allUsersData, targetEmail);
-        if (!targetUname) { showNotification("אין אדם כזה (המייל לא קיים במערכת)", true); return; }
+const db = window.db;
 
-        const myLower = (allUsersData[userNow].email || userNow).toLowerCase();
-        if (targetEmail === myLower) { showNotification("את כבר חברה בתיקייה הזו", true); return; }
+membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
+  const emailEl = membersBar.querySelector("#detail_inv_email");
+  const targetEmail = (emailEl.value || "").trim().toLowerCase();
+  if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
 
-        const meUser = allUsersData[userNow];
-        meUser.outgoingShareRequests.push({
-          folderId: openId,
-          folderName: meUser.sharedFolders[openId]?.name || "",
-          toEmail: targetEmail,
-          status: "pending"
-        });
+  // 1) בדיקת קיום משתמש ב-Firestore (לא בלוקאל-סטורג')
+  const userDoc = await getDoc(doc(db, "users", targetEmail));
+  if (!userDoc.exists()) { showNotification("אין אדם כזה (המייל לא קיים במערכת)", true); return; }
+
+  // 2) מניעת הוספת עצמי
+  const myLower = (allUsersData[userNow].email || userNow).toLowerCase();
+  if (targetEmail === myLower) { showNotification("את כבר חברה בתיקייה הזו", true); return; }
+
+  // 3) יצירת הזמנה בענן
+  const meUser = allUsersData[userNow];
+  await addDoc(collection(db, "invites"), {
+    folderId: openId,
+    folderName: meUser.sharedFolders[openId]?.name || "",
+    fromEmail: myLower,
+    toEmail: targetEmail,
+    status: "pending",
+    createdAt: Date.now()
+  });
+
+  // נשמור גם מקומית כדי שהמסך הנוכחי ייראה מעודכן כמו קודם
+  meUser.outgoingShareRequests.push({
+    folderId: openId,
+    folderName: meUser.sharedFolders[openId]?.name || "",
+    toEmail: targetEmail,
+    status: "pending"
+  });
+  saveAllUsersDataToStorage(allUsersData);
+
+  showNotification("הזמנה נשלחה (ממתינה לאישור)");
+  emailEl.value = "";
+});
+
 
         ensureUserSharedFields(allUsersData, targetUname);
         allUsersData[targetUname].incomingShareRequests.push({
