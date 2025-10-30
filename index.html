@@ -101,6 +101,38 @@
       box-shadow: 0 8px 20px rgba(0,0,0,.4);
       transition: background .18s, filter .18s;
     }
+
+    .logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .5rem .75rem;
+  border: 0;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+
+/* כפתור המובייל מוסתר בברירת מחדל בדסקטופ */
+.mobile-logout { display: none; }
+
+/* במובייל: מסתירים את כפתור הסרגל צד ומראים את כפתור המובייל */
+@media (max-width: 760px) {
+  aside .logout-btn { display: none; }   /* מסתיר את כפתור הצד */
+  .mobile-logout { display: inline-flex; }
+
+  /* שימי אותו תמיד נראה – קבוע בתחתית המסך (נוח במובייל) */
+  .mobile-logout {
+    position: fixed;
+    bottom: 12px;
+    right: 12px;
+    z-index: 1100;        /* מעל המגירה/תפריט הצד */
+  }
+
+  /* דאגי שה-Header מעל התפריט הצד כדי שהכפתור לא ייעלם מאחורי שכבה */
+  .top-bar { position: sticky; top: 0; z-index: 1000; }
+}
     .logout-btn:hover {
       background: rgba(255,255,255,0.18);
       filter: brightness(1.05);
