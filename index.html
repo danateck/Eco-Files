@@ -468,6 +468,7 @@
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px,1fr));
       gap: 1rem;
+      justify-items: center;
     }
 
     .doc-card {
@@ -561,6 +562,299 @@
     .mobile-logout {
       display: none;
     }
+
+/* ==== Shared (Cozy) ==== */
+.shared-manage { display:grid; gap:16px; }
+
+.cozy-head {
+  display:flex; align-items:center; justify-content:space-between;
+  background:#0f1717; color:#d6e6df; border:1px solid #2d3b3b;
+  border-radius:14px; padding:12px 14px; box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+.cozy-head h3 { margin:0; font-size:1rem; font-weight:700; letter-spacing:.3px; }
+.btn-cozy {
+  background:#0e3535; color:#fff; border:1px solid #2e5a5a;
+  border-radius:10px; padding:.55rem .8rem; font-weight:600; cursor:pointer;
+  box-shadow:0 10px 24px rgba(0,0,0,.28); transition:.18s;
+}
+.btn-cozy:hover { filter:brightness(1.08); transform:translateY(-1px); }
+
+
+
+
+.sf-card {
+  width: 100% !important ;
+  max-width: 900px !important; /* מאפשר להם להיות רחבים מאוד */
+  display:grid; grid-template-columns:56px 1fr auto; gap:14px;
+  align-items:center; background:#0b1010; color:#cfe2df;
+  border:1px solid #243030; border-radius:16px; padding:14px !important ;
+  box-shadow:0 16px 34px rgba(0,0,0,.25);
+  margin: 6px 0 !important;  
+}
+.sf-ico {
+  width:42px; height:42px; border-radius:12px; display:grid; place-items:center;
+  background:#112020; border:1px solid #2b3c3c; font-size:18px;
+}
+.sf-main { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.sf-title { font-size:1rem; font-weight:700; color:#e8f3f1; margin:0; }
+.sf-meta { font-size:.8rem; color:#98b1ad; }
+.sf-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+.btn-min {
+  background:#101a1a; color:#d7e5e3; border:1px solid #2b3c3c;
+  border-radius:10px; padding:.42rem .6rem; font-size:.78rem; cursor:pointer;
+}
+.btn-min:hover { background:#132020; }
+.btn-danger {
+  background:#321515; color:#ffd9d9; border:1px solid #733a3a;
+}
+.btn-danger:hover { background:#3a1717; }
+
+.pending-wrap {
+  background:#0b1010; border:1px solid #243030; border-radius:14px; padding:12px;
+  display:grid; gap:10px; color:#cfe2df; box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+.pending-row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+/* ===== Responsive shared layout ===== */
+.shared-container{
+  max-width: min(1840px, 98vw);
+  margin: 0 auto;
+    margin-top: 14px !important;
+  padding: clamp(10px, 2vw, 24px);
+  display: grid !important;
+  align-items:start !important;
+  justify-content: center !important;
+  gap: clamp(12px, 2vw, 22px);
+}
+
+
+/* תיבות/כרטיסים ימלאו את הרוחב הזמין */
+.pending-wrap,
+.cozy-head
+
+{
+  width: 100%;
+}
+
+
+
+/* פעולות בתיקייה – לעטוף בשבירה יפה במובייל */
+.sf-actions{
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+/* כותרת עם כפתור בצד – רספונסיבי */
+.cozy-head{
+  display:flex; align-items:center; justify-content:space-between;
+  background:#0f1717; color:#d6e6df; border:1px solid #2d3b3b;
+  border-radius:14px; padding:12px 14px; box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+
+/* בקשות ממתינות – תיבה מלאה רוחב */
+.pending-wrap{
+  background:#0b1010; border:1px solid #243030; border-radius:14px;
+  padding:14px; color:#cfe2df; box-shadow:0 12px 28px rgba(0,0,0,.22);
+}
+
+/* כפתורים */
+.btn-cozy{
+  background:#0e3535; color:#fff; border:1px solid #2e5a5a;
+  border-radius:10px; padding:.55rem .8rem; font-weight:600; cursor:pointer;
+  box-shadow:0 10px 24px rgba(0,0,0,.28); transition:.18s;
+}
+.btn-cozy:hover{ filter:brightness(1.08); transform:translateY(-1px); }
+
+.btn-min{
+  background:#101a1a; color:#d7e5e3; border:1px solid #2b3c3c;
+  border-radius:10px; padding:.42rem .6rem; font-size:.88rem; cursor:pointer;
+}
+.btn-min:hover{ background:#132020; }
+.btn-danger{ background:#321515; color:#ffd9d9; border:1px solid #733a3a; }
+.btn-danger:hover{ background:#3a1717; }
+
+/* טיפוגרפיה קטנה לשורות משנה */
+.sf-title{ font-size:1.05rem; font-weight:700; color:#e8f3f1; margin:0; }
+.sf-meta{ font-size:.9rem; color:#98b1ad; }
+
+/* התאמות רוחב למסכים גדולים */
+@media (min-width: 1200px){
+  .shared-container{ max-width: 1280px !important;}
+}
+
+/* התאמות מובייל */
+@media (max-width: 560px){
+  .cozy-head{ flex-direction: column; align-items: stretch; gap: 10px; }
+  .sf-actions{ justify-content: stretch; }
+}
+/* כשאנחנו במצב אחסון משותף, docsList לא יהיה grid של כרטיסים */
+.docs-list.shared-mode {
+  display: block;
+  width: 100%;
+}
+
+
+/* ריווח בין הבלוקים השחורים (עובד גם אם העטיפה שונה) */
+.cozy-head,
+.pending-wrap
+ {
+  margin-top: 14px !important;    /* רווח מלמעלה לכל בלוק */
+}
+
+
+
+
+.shared-container {
+    display: flex !important
+;
+    margin-right: 20px !important;
+    flex-wrap: wrap;
+    align-content: center;
+    align-items: flex-end;
+    flex-direction: row;
+}
+
+
+.sf-list {
+    display: flex !important
+;
+    gap: 16px !important;
+    width: 100%;
+    flex-wrap: nowrap;
+    grid-template-columns: repeat(auto-fit, minmax(550px, 1fr)) !important;
+    margin-right: 29px !important;
+    flex-direction: column;
+    align-content: stretch;
+    align-items: flex-end;
+}
+/* אם עדיין לא מספיק, אפשר להגדיל את המרחק */
+@media (min-width: 1000px) {
+  .shared-container {
+    margin-right: 20px !important;
+  }
+}
+
+
+
+element.style {
+    display: grid
+;
+    gap: 92px;
+    margin: 28px;
+}
+
+
+
+
+/* אריח בודד */
+.tetromino {
+  width: 96px;
+  height: 112px;
+  position: absolute;
+  transition: all ease .3s;
+  background: url('data:image/svg+xml;utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 612 684"%3E%3Cpath fill="%23010101" d="M305.7 0L0 170.9v342.3L305.7 684 612 513.2V170.9L305.7 0z"/%3E%3Cpath fill="%23fff" d="M305.7 80.1l-233.6 131 233.6 131 234.2-131-234.2-131"/%3E%3C/svg%3E') no-repeat top center;
+}
+
+/* מהירות: 1.5 שניות; מרחקים: xspace=48px, yspace=27px */
+.box1 { animation: tetromino1 1.5s ease-out infinite; }
+.box2 { animation: tetromino2 1.5s ease-out infinite; }
+.box3 { animation: tetromino3 1.5s ease-out infinite; z-index: 2; }
+.box4 { animation: tetromino4 1.5s ease-out infinite; }
+
+@keyframes tetromino1 {
+  0%, 40%   { transform: translate(0px, 0px); }
+  50%       { transform: translate(48px, -27px); }
+  60%, 100% { transform: translate(96px, 0px); }
+}
+
+@keyframes tetromino2 {
+  0%, 20%   { transform: translate(96px, 0px); }
+  40%, 100% { transform: translate(144px, 27px); }
+}
+
+@keyframes tetromino3 {
+  0%        { transform: translate(144px, 27px); }
+  20%, 60%  { transform: translate(96px, 54px); }
+  90%, 100% { transform: translate(48px, 27px); }
+}
+
+@keyframes tetromino4 {
+  0%, 60%   { transform: translate(48px, 27px); }
+  90%, 100% { transform: translate(0px, 0px); }
+}
+
+
+/* ==== LOADING — FINAL OVERRIDES ==== */
+#loading-overlay.hidden { opacity: 0 !important; pointer-events: none !important; }
+
+#loading-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  z-index: 99999 !important;
+  background: rgba(0,0,0,.75) !important;
+}
+
+#loading-overlay .loading-stack {
+  display: flex   !important;
+  flex-direction: column !important;
+  align-items: center !important;
+   top: 50% !important;
+     transform: translate(-50%, -50%) !important;
+
+  left: 50% !important;
+  gap: 16px !important;      /* רווח בין האנימציה לטקסט */
+  text-align: center !important;
+}
+
+/* מסגרת מוגדרת לגודל האנימציה, כדי שלא תגלוש על הטקסט */
+#loading-overlay .tetro-frame {
+  width: 220px !important;      /* אפשר לשנות גודל כאן */
+  height: 180px !important;
+  position: relative !important;
+  margin: 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* מבטלים לחלוטין את המיקום הישן של tetrominos */
+#loading-overlay .tetrominos {
+  position: relative !important; /* לא absolute כאן */
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  margin: 0 auto !important;
+  width: 192px !important;      /* גודל האנימציה */
+  height: 140px !important;
+}
+
+/* גודל ה"אריחים" נשאר, אבל אפשר לכוונן את הסקייל אם גדול מדי */
+#loading-overlay .tetrominos { transform: scale(0.9) !important; } /* 0.8/1.0 לפי הטעם */
+#loading-overlay .loading-stack { gap: -12px !important; } /* או 20px */
+
+
+#loading-overlay .loading-text {
+  display: block !important;
+  margin: 0 auto !important;
+  margin-right: -84px !important;
+  width: 100% !important;
+  max-width: 80vw !important;       /* אפשר לשנות אם יש שורה ארוכה */
+  text-align: right !important;     /* זה הטריק המרכזי */
+  direction: rtl !important;         /* עברית */
+  unicode-bidi: plaintext !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+}
+
+
   </style>
 </head>
 
@@ -801,6 +1095,23 @@
     </form>
   </div>
 </div>
+
+
+
+<div id="loading-overlay" class="loading-overlay hidden ">
+  <div class="loading-stack">
+    <div class="tetro-frame">
+      <div class="tetrominos">
+        <div class="tetromino box1"></div>
+        <div class="tetromino box2"></div>
+        <div class="tetromino box3"></div>
+        <div class="tetromino box4"></div>
+      </div>
+    </div>
+    <p class="loading-text">מזהה טקסט... אנא המתיני</p>
+  </div>
+</div>
+
 
 
 
