@@ -46,8 +46,6 @@ const {
   addDoc, collection, query, where, onSnapshot
 } = (window.fs || {});
 
-
-
 // שליפה של קובץ מה-DB לפי docId
 async function loadFileFromDB(docId) {
   const db = await openDB();
@@ -1030,7 +1028,7 @@ function openSharedView() {
   docsList.classList.add("shared-mode");
 
   const me = allUsersData[userNow];
- const myEmail = (me.email || userNow).toLowerCase();
+  const myEmail = (me.email || userNow);
 
   // ===== עטיפת ניהול =====
   const wrap = document.createElement("div");
@@ -1166,42 +1164,6 @@ wrap.className = "shared-container";
   renderSharedFoldersList();
   renderPending();
 
-listenInvitesForMe(myEmail);
-
-
-function listenInvitesForMe(myEmail) {
-  const q = query(
-    collection(db, "invites"),
-    where("toEmail", "==", myEmail.toLowerCase()),
-    where("status", "==", "pending")
-  );
-
-  // מאזינים בזמן אמת להזמנות ממתינות
-  onSnapshot(q, (snap) => {
-    const me = allUsersData[userNow];
-    me.incomingShareRequests = []; // נבנה מרשימת הענן
-    snap.forEach((docSnap) => {
-      const inv = docSnap.data();
-      me.incomingShareRequests.push({
-        folderId: inv.folderId,
-        folderName: inv.folderName,
-        fromEmail: inv.fromEmail,
-        status: inv.status,
-        _inviteDocId: docSnap.id // נשמור מזהה לצורך עדכון/אישור/דחייה
-      });
-    });
-    saveAllUsersDataToStorage(allUsersData);
-    // נרנדר מחדש את בלוק ה"Pending"
-    const pendingWrap = document.getElementById("sf_pending") || pendingBox.querySelector("#sf_pending");
-    if (pendingWrap) {
-      // יש לך כבר renderPending(); פשוט נקרא לו
-      renderPending();
-    }
-  });
-}
-
-
-
   // ===== אירועים על רשימת התיקיות =====
   listWrap.addEventListener("click", (ev) => {
     const t = ev.target;
@@ -1270,7 +1232,7 @@ docsList.appendChild(docsBox);
       }
 
       // לחצן הזמנה במסך פרטי התיקייה — אותה לוגיקה בדיוק
-     membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
+      membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
   const emailEl = membersBar.querySelector("#detail_inv_email");
   const targetEmail = (emailEl.value || "").trim().toLowerCase();
   if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
