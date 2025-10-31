@@ -208,7 +208,20 @@ async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderNa
 
 
 // קבלת הזמנות ממתינות למשתמש (Firestore)
+// קבלת הזמנות ממתינות למשתמש (Firestore)
+// קבלת הזמנות ממתינות למשתמש (Firestore)
 async function getPendingInvitesFromFirestore(userEmail) {
+  // טען את הנתונים מ-localStorage
+  const allUsers = loadAllUsersDataFromStorage();
+  const currentUser = getCurrentUser();
+  
+  // אם Firebase לא זמין, בדוק ב-localStorage
+  if (!isFirebaseAvailable()) {
+    console.warn("Firebase לא זמין, בודק ב-localStorage");
+    const me = allUsers[currentUser];
+    return (me?.incomingShareRequests || []).filter(r => r.status === "pending");
+  }
+  
   try {
     const key = userEmail.trim().toLowerCase();
     const invitesRef = window.fs.collection(window.db, "shareInvites");
@@ -217,17 +230,17 @@ async function getPendingInvitesFromFirestore(userEmail) {
       window.fs.where("toEmail", "==", key),
       window.fs.where("status", "==", "pending")
     );
-    const snap = await getUserDocs(q);
+    const snap = await window.fs.getDocs(q);
     const invites = [];
     snap.forEach(d => invites.push({ id: d.id, ...d.data() }));
     return invites;
   } catch (e) {
-    console.error("שגיאה בטעינת הזמנות:", e);
-    return [];
+    console.error("שגיאה בטעינת הזמנות מ-Firestore, עובר ל-localStorage:", e);
+    // Fallback to localStorage
+    const me = allUsers[currentUser];
+    return (me?.incomingShareRequests || []).filter(r => r.status === "pending");
   }
 }
-
-
 
 
 

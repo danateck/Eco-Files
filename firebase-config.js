@@ -13,8 +13,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true,  // ✅ chooses long-polling only if needed
-  useFetchStreams: true                     // ✅ avoids WebChannel in many cases
+  experimentalForceLongPolling: true,  // ✅ FORCE long-polling (not auto-detect)
+  experimentalAutoDetectLongPolling: false, // ❌ disable auto-detect
+  useFetchStreams: false                    // ❌ disable fetch streams to ensure long polling
 });
 // Make everything available globally for main.js
 window.db = db;
