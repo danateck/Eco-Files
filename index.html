@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EcoDocs Dashboard</title>
 
+
+  
   <!-- פונט -->
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600&display=swap" rel="stylesheet" />
 
@@ -1290,28 +1292,17 @@ element.style {
 
 
 
+<!-- Firebase Compat CDN (אין import ואין type="module") -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<!-- (אופציונלי אם את משתמשת ב־Auth) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 
-<script>
-  // נניח שכבר קראת initializeApp(...)
-  // חשוב: אם את על CDN מודולרי – תעשי import דרך הסקריפט שם.
-  // כאן רק מראים את הרעיון: לחשוף ל-global
+<!-- אחר כך טוענים את firebase-config.js שלך -->
+<script src="./firebase-config.js"></script>
 
-  // דוגמה גלובלית לשימוש ב-main.js:
-  window.db = getFirestore(app);
-
-  // לחשוף את הפונקציות לשימוש בלי ES module imports:
-  window.fs = {
-    doc, getDoc, setDoc, updateDoc,
-    addDoc, collection, query, where, onSnapshot
-  };
-</script>
-
-
-<script src="./firebase-config.js"></script>                       
-  <!-- פה נטען את הקוד הראשי של האפליקציה (שנעבוד עליו עכשיו) -->
-  <script src="./JS/main.js"></script>
-<!-- מיכל כללי, לא חייב לעשות איתו כלום עכשיו -->
-<div id="openFileFrameContainer" class="hidden"></div>
+<!-- ואחרי זה את main.js -->
+<script src="./JS/main.js"></script>
 
 </body>
 </html>

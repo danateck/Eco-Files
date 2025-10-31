@@ -8,6 +8,17 @@
 // בקי לכל קובץ: id (המזהה של הדוקומנט)
 // value שמור זה ה-base64 (dataURL)
 
+// בדיקה אם Firebase זמין
+function isFirebaseAvailable() {
+  try {
+    return !!(window.firebase && window.db && navigator.onLine);
+  } catch (e) {
+    return false;
+  }
+}
+
+
+
 function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("docArchiveDB", 1);
@@ -38,14 +49,6 @@ async function saveFileToDB(docId, dataUrl) {
   });
 }
 
-
-// שימוש בעזרי Firestore מהחלון (שנקבעו ב-firebase-config.js)
-const db = window.db;                 // ה-DB הגלובלי
-const {
-  doc, getDoc, setDoc, updateDoc,
-  addDoc, collection, query, where, onSnapshot
-} = (window.fs || {});
-
 // שליפה של קובץ מה-DB לפי docId
 async function loadFileFromDB(docId) {
   const db = await openDB();
@@ -73,6 +76,172 @@ async function deleteFileFromDB(docId) {
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });
+}
+
+async function checkUserExistsInFirestore(email) {
+  console.log("בודק משתמש ב-localStorage:", email);
+  const allUsers = loadAllUsersDataFromStorage();
+  const key = email.trim().toLowerCase();
+  
+  // חיפוש לפי email או username
+  for (const [username, userData] of Object.entries(allUsers)) {
+    const userEmail = (userData.email || username).toLowerCase();
+    if (userEmail === key) {
+      console.log("✅ משתמש נמצא:", username);
+      return true;
+    }
+  }
+  console.log("❌ משתמש לא נמצא");
+  return false;
+}
+
+
+async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderName) {
+  // אם Firebase לא זמין, שמור ב-localStorage
+  if (!isFirebaseAvailable()) {
+    console.warn("Firebase לא זמין, שומר הזמנה ב-localStorage");
+    try {
+      const allUsers = loadAllUsersDataFromStorage();
+      const targetUser = findUsernameByEmail(allUsers, toEmail);
+      
+      if (!targetUser) {
+        console.error("משתמש היעד לא נמצא:", toEmail);
+        return false;
+      }
+      
+      ensureUserSharedFields(allUsers, targetUser);
+      allUsers[targetUser].incomingShareRequests.push({
+        folderId,
+        folderName,
+        fromEmail: fromEmail.toLowerCase(),
+        toEmail: toEmail.toLowerCase(),
+        status: "pending",
+        createdAt: Date.now()
+      });
+      
+      saveAllUsersDataToStorage(allUsers);
+      console.log("✅ הזמנה נשמרה ב-localStorage");
+      return true;
+    } catch (e) {
+      console.error("שגיאה בשמירה ב-localStorage:", e);
+      return false;
+    }
+  }
+  
+  // אם Firebase זמין, נסה לשלוח
+  try {
+    const inviteRef = window.fs.collection(window.db, "shareInvites");
+    await window.fs.addDoc(inviteRef, {
+      folderId,
+      folderName,
+      fromEmail: fromEmail.toLowerCase(),
+      toEmail: toEmail.toLowerCase(),
+      status: "pending",
+      createdAt: Date.now()
+    });
+    console.log("✅ הזמנה נשלחה ל-Firestore");
+    return true;
+  } catch (e) {
+    console.error("שגיאה בשליחת הזמנה ל-Firestore, עובר ל-localStorage:", e);
+    
+    // Fallback ל-localStorage (בלי רקורסיה!)
+    try {
+      const allUsers = loadAllUsersDataFromStorage();
+      const targetUser = findUsernameByEmail(allUsers, toEmail);
+      
+      if (!targetUser) return false;
+      
+      ensureUserSharedFields(allUsers, targetUser);
+      allUsers[targetUser].incomingShareRequests.push({
+        folderId,
+        folderName,
+        fromEmail: fromEmail.toLowerCase(),
+        toEmail: toEmail.toLowerCase(),
+        status: "pending",
+        createdAt: Date.now()
+      });
+      
+      saveAllUsersDataToStorage(allUsers);
+      return true;
+    } catch (localErr) {
+      console.error("גם localStorage נכשל:", localErr);
+      return false;
+    }
+  }
+}
+
+
+
+
+// קבלת הזמנות ממתינות למשתמש (Firestore)
+async function getPendingInvitesFromFirestore(userEmail) {
+  try {
+    const key = userEmail.trim().toLowerCase();
+    const invitesRef = window.fs.collection(window.db, "shareInvites");
+    const q = window.fs.query(
+      invitesRef,
+      window.fs.where("toEmail", "==", key),
+      window.fs.where("status", "==", "pending")
+    );
+    const snap = await window.fs.getDoc(q);
+    const invites = [];
+    snap.forEach(doc => {
+      invites.push({ id: doc.id, ...doc.data() });
+    });
+    return invites;
+  } catch (e) {
+    console.error("שגיאה בטעינת הזמנות:", e);
+    return [];
+  }
+}
+
+
+
+
+
+// עדכון סטטוס הזמנה (Firestore)
+async function updateInviteStatus(inviteId, newStatus) {
+  try {
+    const inviteRef = window.fs.doc(window.db, "shareInvites", inviteId);
+    await window.fs.updateDoc(inviteRef, { status: newStatus, updatedAt: Date.now() });
+    return true;
+  } catch (e) {
+    console.error("שגיאה בעדכון הזמנה:", e);
+    return false;
+  }
+}
+
+
+// הוספת חבר לתיקייה משותפת (Firestore)
+async function addMemberToSharedFolder(folderId, memberEmail, folderName, ownerEmail) {
+  try {
+    const key = memberEmail.trim().toLowerCase();
+    const userRef = window.fs.doc(window.db, "users", key);
+    
+    // יצירת או עדכון מבנה התיקייה אצל החבר החדש
+    const folderData = {
+      [`sharedFolders.${folderId}`]: {
+        name: folderName,
+        owner: ownerEmail.toLowerCase(),
+        members: firebase.firestore.FieldValue.arrayUnion(key),
+        joinedAt: Date.now()
+      }
+    };
+    
+    await window.fs.setDoc(userRef, folderData, { merge: true });
+    
+    // עדכון גם אצל הבעלים
+    const ownerKey = ownerEmail.trim().toLowerCase();
+    const ownerRef = window.fs.doc(window.db, "users", ownerKey);
+    await window.fs.updateDoc(ownerRef, {
+      [`sharedFolders.${folderId}.members`]: firebase.firestore.FieldValue.arrayUnion(key)
+    });
+    
+    return true;
+  } catch (e) {
+    console.error("שגיאה בהוספת חבר:", e);
+    return false;
+  }
 }
 
 
@@ -640,6 +809,36 @@ function sortDocs(docsArray) {
   return arr;
 }
 
+
+function normalizeEmail(e) { 
+  return (e || "").trim().toLowerCase(); 
+}
+
+function findUsernameByEmail(allUsersData, email) {
+  const target = normalizeEmail(email);
+  for (const [uname, u] of Object.entries(allUsersData)) {
+    const userEmail = normalizeEmail(u.email || uname);
+    if (userEmail === target) return uname;
+  }
+  return null;
+}
+
+function ensureUserSharedFields(allUsersData, username) {
+  if (!allUsersData[username]) {
+    allUsersData[username] = { password: "", docs: [], email: username };
+  }
+  const u = allUsersData[username];
+
+  if (!u.email) {
+    const looksLikeEmail = /.+@.+\..+/.test(username);
+    u.email = looksLikeEmail ? username : username;
+  }
+
+  if (!u.sharedFolders) u.sharedFolders = {};
+  if (!u.incomingShareRequests) u.incomingShareRequests = [];
+  if (!u.outgoingShareRequests) u.outgoingShareRequests = [];
+}
+
 /*********************
  * 4. אפליקציה / UI  *
  *********************/
@@ -653,6 +852,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const userNow = getCurrentUser() || "defaultUser";
+
+  
 
   const homeView      = document.getElementById("homeView");
   const folderGrid    = document.getElementById("folderGrid");
@@ -689,15 +890,14 @@ function normalizeEmail(e) { return (e || "").trim().toLowerCase(); }
 
   // === INIT shared fields (run once after loading allUsersData/allDocsData) ===
 function ensureUserSharedFields(allUsersData, username) {
-  if (!allUsersData[username]) allUsersData[username] = { password: "", docs: [] };
+  if (!allUsersData[username]) {
+    allUsersData[username] = { password: "", docs: [], email: username };
+  }
   const u = allUsersData[username];
 
-  // אם אין email, ננסה לקבוע:
-  // 1) אם שם המשתמש נראה כמו מייל – נשמור אותו כ-email
-  // 2) אחרת נשמור את השם כ-email לוגי, כדי שתמיד תהיה לנו זהות יציבה
   if (!u.email) {
     const looksLikeEmail = /.+@.+\..+/.test(username);
-    u.email = looksLikeEmail ? username : (u.email || username);
+    u.email = looksLikeEmail ? username : username;
   }
 
   if (!u.sharedFolders) u.sharedFolders = {};
@@ -707,9 +907,9 @@ function ensureUserSharedFields(allUsersData, username) {
 
 
 function findUsernameByEmail(allUsersData, email) {
-  const target = normalizeEmail(email);
+  const target = (email || "").trim().toLowerCase();
   for (const [uname, u] of Object.entries(allUsersData)) {
-    const userEmail = normalizeEmail(u.email || uname);
+    const userEmail = (u.email || uname).trim().toLowerCase();
     if (userEmail === target) return uname;
   }
   return null;
@@ -1139,27 +1339,33 @@ wrap.className = "shared-container";
   }
 
   // ===== רינדור בקשות =====
-  function renderPending() {
-    const wrap = pendingBox.querySelector("#sf_pending");
-    wrap.innerHTML = "";
-    const list = (me.incomingShareRequests || []).filter(r => r.status === "pending");
-    if (!list.length) {
-      wrap.innerHTML = `<div style="opacity:.7">אין בקשות ממתינות</div>`;
-      return;
-    }
-    for (const req of list) {
-      const line = document.createElement("div");
-      line.className = "pending-row";
-      line.innerHTML = `
-        הזמנה לתיקייה "<b>${req.folderName}</b>" מאת ${req.fromEmail}
-        <div>
-          <button class="btn-min" data-accept="${req.folderId}">אשר</button>
-          <button class="btn-min btn-danger" data-reject="${req.folderId}">סרב</button>
-        </div>
-      `;
-      wrap.appendChild(line);
-    }
+async function renderPending() {
+  const wrap = pendingBox.querySelector("#sf_pending");
+  wrap.innerHTML = "<div style='opacity:.7'>טוען הזמנות...</div>";
+  
+  const myEmail = (allUsersData[userNow].email || userNow).toLowerCase();
+  const invites = await getPendingInvitesFromFirestore(myEmail);
+  
+  wrap.innerHTML = "";
+  
+  if (!invites.length) {
+    wrap.innerHTML = `<div style="opacity:.7">אין בקשות ממתינות</div>`;
+    return;
   }
+  
+  for (const inv of invites) {
+    const line = document.createElement("div");
+    line.className = "pending-row";
+    line.innerHTML = `
+      הזמנה לתיקייה "<b>${inv.folderName}</b>" מאת ${inv.fromEmail}
+      <div>
+        <button class="btn-min" data-accept="${inv.id}" data-folder="${inv.folderId}" data-fname="${inv.folderName}" data-owner="${inv.fromEmail}">אשר</button>
+        <button class="btn-min btn-danger" data-reject="${inv.id}">סרב</button>
+      </div>
+    `;
+    wrap.appendChild(line);
+  }
+}
 
   renderSharedFoldersList();
   renderPending();
@@ -1232,48 +1438,51 @@ docsList.appendChild(docsBox);
       }
 
       // לחצן הזמנה במסך פרטי התיקייה — אותה לוגיקה בדיוק
-      membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
+membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
   const emailEl = membersBar.querySelector("#detail_inv_email");
   const targetEmail = (emailEl.value || "").trim().toLowerCase();
-  if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
-
-  // 1) מאמתים שקיים משתמש כזה ב-Firestore (אוסף users, document id = email)
-  const userDoc = await getDoc(doc(db, "users", targetEmail));
-  if (!userDoc.exists()) {
-    showNotification("אין אדם כזה (המייל לא קיים במערכת)", true);
-    return;
+  
+  if (!targetEmail) { 
+    showNotification("הקלידי מייל של הנמען", true); 
+    return; 
   }
 
-  // 2) לא מאפשרים להזמין את עצמי
-  const myLower = (allUsersData[userNow].email || userNow).toLowerCase();
-  if (targetEmail === myLower) {
-    showNotification("את כבר חברה בתיקייה הזו", true);
-    return;
+  const myEmail = (allUsersData[userNow].email || userNow).toLowerCase();
+  if (targetEmail === myEmail) { 
+    showNotification("את כבר חברה בתיקייה הזו", true); 
+    return; 
   }
 
-  // 3) יוצרים הזמנה בענן (אוסף invites)
+  // בדיקה ב-Firestore אם המשתמש קיים
+  showLoading("בודק אם המשתמש קיים...");
+  const exists = await checkUserExistsInFirestore(targetEmail);
+  hideLoading();
+  
+  if (!exists) { 
+    showNotification("אין משתמש עם המייל הזה במערכת", true); 
+    return; 
+  }
+
+  // שליחת הזמנה ל-Firestore
+  showLoading("שולח הזמנה...");
   const meUser = allUsersData[userNow];
-  await addDoc(collection(db, "invites"), {
-    folderId: openId,
-    folderName: meUser.sharedFolders[openId]?.name || "",
-    fromEmail: myLower,
-    toEmail: targetEmail,
-    status: "pending",
-    createdAt: Date.now()
-  });
-
-  // נשמור גם מקומית כדי שהמסך הנוכחי יתעדכן מיד, אבל האמת היא שהסנכרון הענני יעשה את שלו
-  meUser.outgoingShareRequests ||= [];
-  meUser.outgoingShareRequests.push({
-    folderId: openId,
-    folderName: meUser.sharedFolders[openId]?.name || "",
-    toEmail: targetEmail,
-    status: "pending"
-  });
-  saveAllUsersDataToStorage(allUsersData);
-
-  showNotification("הזמנה נשלחה (ממתינה לאישור)");
-  emailEl.value = "";
+  const folderName = meUser.sharedFolders[openId]?.name || "";
+  
+  const success = await sendShareInviteToFirestore(
+    myEmail,
+    targetEmail,
+    openId,
+    folderName
+  );
+  
+  hideLoading();
+  
+  if (success) {
+    showNotification("ההזמנה נשלחה בהצלחה! ✉️");
+    emailEl.value = "";
+  } else {
+    showNotification("שגיאה בשליחת ההזמנה, נסי שוב", true);
+  }
 });
 
 
@@ -1318,70 +1527,60 @@ docsList.appendChild(docsBox);
     }
   });
 
-  // ===== אישור/דחייה =====
-  pendingBox.addEventListener("click", (ev) => {
-    const t = ev.target;
-    const accId = t.getAttribute?.("data-accept");
-    const rejId = t.getAttribute?.("data-reject");
-    if (!accId && !rejId) return;
+pendingBox.addEventListener("click", async (ev) => {
+  const t = ev.target;
+  const accId = t.getAttribute?.("data-accept");
+  const rejId = t.getAttribute?.("data-reject");
+  
+  if (!accId && !rejId) return;
 
-    const list = me.incomingShareRequests || [];
-    const req = list.find(r => r.folderId === (accId || rejId) && r.status === "pending");
-    if (!req) return;
+  const myEmail = (allUsersData[userNow].email || userNow).toLowerCase();
 
-    const ownerUname = findUsernameByEmail(allUsersData, req.fromEmail);
-    if (!ownerUname) { showNotification("שגיאה: בעל התיקייה לא נמצא", true); return; }
-    const owner = allUsersData[ownerUname];
-
-    if (accId) {
-      ensureUserSharedFields(allUsersData, userNow);
-      if (!me.sharedFolders[req.folderId]) {
-        me.sharedFolders[req.folderId] = {
-          name: req.folderName,
-          owner: req.fromEmail,
-          members: [req.fromEmail]
-        };
+  if (accId) {
+    const folderId = t.getAttribute("data-folder");
+    const folderName = t.getAttribute("data-fname");
+    const ownerEmail = t.getAttribute("data-owner");
+    
+    showLoading("מצטרף לתיקייה...");
+    
+    // הוספה לתיקייה המשותפת
+    const added = await addMemberToSharedFolder(folderId, myEmail, folderName, ownerEmail);
+    
+    if (added) {
+      // עדכון סטטוס ההזמנה
+      await updateInviteStatus(accId, "accepted");
+      
+      // עדכון מקומי
+      if (!allUsersData[userNow].sharedFolders) {
+        allUsersData[userNow].sharedFolders = {};
       }
-      const myE = (me.email || userNow);
-      if (!owner.sharedFolders[req.folderId]) {
-        owner.sharedFolders[req.folderId] = {
-          name: req.folderName,
-          owner: req.fromEmail,
-          members: [req.fromEmail]
-        };
-      }
-      if (!owner.sharedFolders[req.folderId].members.includes(myE)) {
-        owner.sharedFolders[req.folderId].members.push(myE);
-      }
-      if (!me.sharedFolders[req.folderId].members.includes(myE)) {
-        me.sharedFolders[req.folderId].members.push(myE);
-      }
-
-      req.status = "accepted";
-      (owner.outgoingShareRequests || []).forEach(o => {
-        if (o.folderId === req.folderId && o.toEmail.toLowerCase() === myE.toLowerCase() && o.status === "pending") {
-          o.status = "accepted";
-        }
-      });
-
+      allUsersData[userNow].sharedFolders[folderId] = {
+        name: folderName,
+        owner: ownerEmail,
+        members: [ownerEmail, myEmail]
+      };
       saveAllUsersDataToStorage(allUsersData);
-      renderPending();
+      
       showNotification("הצטרפת לתיקייה המשותפת ✔️");
+    } else {
+      showNotification("שגיאה בהצטרפות, נסי שוב", true);
     }
+    
+    hideLoading();
+    await renderPending();
+  }
 
-    if (rejId) {
-      req.status = "rejected";
-      (owner.outgoingShareRequests || []).forEach(o => {
-        if (o.folderId === req.folderId && o.toEmail.toLowerCase() === (me.email||userNow).toLowerCase() && o.status === "pending") {
-          o.status = "rejected";
-        }
-      });
-      saveAllUsersDataToStorage(allUsersData);
-      renderPending();
-      showNotification("הזמנה נדחתה");
-    }
-  });
+  if (rejId) {
+    showLoading("דוחה הזמנה...");
+    await updateInviteStatus(rejId, "rejected");
+    hideLoading();
+    showNotification("ההזמנה נדחתה");
+    await renderPending();
+  }
+});
 
+// קריאה ראשונית
+renderPending();
   homeView.classList.add("hidden");
   categoryView.classList.remove("hidden");
 }
