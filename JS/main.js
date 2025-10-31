@@ -23,7 +23,7 @@ function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("docArchiveDB", 1);
     request.onupgradeneeded = (event) => {
-      const db = event.target.result;
+      const db = getFirestore(FirebaseApp, 'login-page-echo-file')
       if (!db.objectStoreNames.contains("files")) {
         db.createObjectStore("files", { keyPath: "id" });
       }
@@ -79,20 +79,51 @@ async function deleteFileFromDB(docId) {
 }
 
 async function checkUserExistsInFirestore(email) {
-  console.log("בודק משתמש ב-localStorage:", email);
-  const allUsers = loadAllUsersDataFromStorage();
   const key = email.trim().toLowerCase();
+  console.log("בודק משתמש ב-Firestore:", key);
   
-  // חיפוש לפי email או username
-  for (const [username, userData] of Object.entries(allUsers)) {
-    const userEmail = (userData.email || username).toLowerCase();
-    if (userEmail === key) {
-      console.log("✅ משתמש נמצא:", username);
+  // אם Firebase לא זמין, בדוק ב-localStorage
+  if (!isFirebaseAvailable()) {
+    console.warn("Firebase לא זמין, בודק ב-localStorage");
+    const allUsers = loadAllUsersDataFromStorage();
+    for (const [username, userData] of Object.entries(allUsers)) {
+      const userEmail = (userData.email || username).toLowerCase();
+      if (userEmail === key) {
+        console.log("✅ משתמש נמצא ב-localStorage:", username);
+        return true;
+      }
+    }
+    console.log("❌ משתמש לא נמצא ב-localStorage");
+    return false;
+  }
+  
+  // בדיקה ב-Firestore
+  try {
+    const userRef = window.fs.doc(window.db, "users", key);
+    const docSnap = await window.fs.getDoc(userRef);
+    
+    if (docSnap.exists()) {
+      console.log("✅ משתמש נמצא ב-Firestore:", key);
       return true;
     }
+    
+    console.log("❌ משתמש לא נמצא ב-Firestore");
+    return false;
+  } catch (e) {
+    console.error("שגיאה בבדיקת משתמש ב-Firestore:", e);
+    
+    // Fallback ל-localStorage במקרה של שגיאה
+    console.warn("עובר ל-localStorage בגלל שגיאה");
+    const allUsers = loadAllUsersDataFromStorage();
+    for (const [username, userData] of Object.entries(allUsers)) {
+      const userEmail = (userData.email || username).toLowerCase();
+      if (userEmail === key) {
+        console.log("✅ משתמש נמצא ב-localStorage (fallback):", username);
+        return true;
+      }
+    }
+    return false;
   }
-  console.log("❌ משתמש לא נמצא");
-  return false;
 }
 
 
