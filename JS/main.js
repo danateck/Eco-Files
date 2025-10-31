@@ -217,11 +217,9 @@ async function getPendingInvitesFromFirestore(userEmail) {
       window.fs.where("toEmail", "==", key),
       window.fs.where("status", "==", "pending")
     );
-    const snap = await window.fs.getDoc(q);
+    const snap = await getUserDocs(q);
     const invites = [];
-    snap.forEach(doc => {
-      invites.push({ id: doc.id, ...doc.data() });
-    });
+    snap.forEach(d => invites.push({ id: d.id, ...d.data() }));
     return invites;
   } catch (e) {
     console.error("שגיאה בטעינת הזמנות:", e);
@@ -257,7 +255,7 @@ async function addMemberToSharedFolder(folderId, memberEmail, folderName, ownerE
       [`sharedFolders.${folderId}`]: {
         name: folderName,
         owner: ownerEmail.toLowerCase(),
-        members: firebase.firestore.FieldValue.arrayUnion(key),
+        members: window.fs.arrayUnion(key),   
         joinedAt: Date.now()
       }
     };
@@ -267,9 +265,9 @@ async function addMemberToSharedFolder(folderId, memberEmail, folderName, ownerE
     // עדכון גם אצל הבעלים
     const ownerKey = ownerEmail.trim().toLowerCase();
     const ownerRef = window.fs.doc(window.db, "users", ownerKey);
-    await window.fs.updateDoc(ownerRef, {
-      [`sharedFolders.${folderId}.members`]: firebase.firestore.FieldValue.arrayUnion(key)
-    });
+   await window.fs.updateDoc(ownerRef, {
+  [`sharedFolders.${folderId}.members`]: window.fs.arrayUnion(key)  // ✅
+});
     
     return true;
   } catch (e) {

@@ -1292,17 +1292,20 @@ element.style {
 
 
 
-<!-- Firebase Compat CDN (אין import ואין type="module") -->
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<!-- (אופציונלי אם את משתמשת ב־Auth) -->
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"
+  }
+}
+</script>
 
-<!-- אחר כך טוענים את firebase-config.js שלך -->
-<script  type="module"  src="./firebase-config.js"></script>
 
+<!-- חשוב: type="module" -->
+<script type="module" src="firebase-config.js"></script>
 <!-- ואחרי זה את main.js -->
-<script  type="module" src="./JS/main.js"></script>
+<script  src="./JS/main.js"></script>
 
 </body>
 </html>

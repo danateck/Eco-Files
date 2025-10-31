@@ -1,6 +1,6 @@
 // firebase-config.js
 import { initializeApp } from "firebase/app";
-import { getFirestore, initializeFirestore, collection, addDoc, getDoc, getDocs, doc, query, where, updateDoc, setDoc } from "firebase/firestore";
+import { getFirestore, initializeFirestore, collection, addDoc, getDoc, getDocs, doc, query, where, updateDoc, setDoc  , arrayUnion} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBPr4X2_8JYCgXzMlTcVB0EJLhup9CdyYw",
@@ -12,8 +12,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = initializeFirestore(app, { experimentalForceLongPolling: true });
-
+const db = initializeFirestore(app, {
+  experimentalAutoDetectLongPolling: true,  // ✅ chooses long-polling only if needed
+  useFetchStreams: true                     // ✅ avoids WebChannel in many cases
+});
 // Make everything available globally for main.js
 window.db = db;
 window.fs = {
@@ -25,7 +27,8 @@ window.fs = {
   query,
   where,
   updateDoc,
-  setDoc
+  setDoc,
+  arrayUnion
 };
 
 console.log("✅ Firestore connected with long polling");
@@ -96,7 +99,6 @@ console.log("✅ Firestore connected with long polling");
 // }
 
 // window.upsertUserProfile = upsertUserProfile;
-
 
 
 
