@@ -1,5 +1,8 @@
 // main.js - גרסה עם IndexedDB לשמירת קבצים גדולים בצורה יציבה
 
+
+
+
 /*************************
  * 0. IndexedDB helpers  *
  *************************/
@@ -23,7 +26,7 @@ function openDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("docArchiveDB", 1);
     request.onupgradeneeded = (event) => {
-      const db = getFirestore(FirebaseApp, 'login-page-echo-file')
+      const db = event.target.result
       if (!db.objectStoreNames.contains("files")) {
         db.createObjectStore("files", { keyPath: "id" });
       }
