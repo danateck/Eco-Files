@@ -1290,6 +1290,23 @@ element.style {
 
 
 
+
+<script>
+  // נניח שכבר קראת initializeApp(...)
+  // חשוב: אם את על CDN מודולרי – תעשי import דרך הסקריפט שם.
+  // כאן רק מראים את הרעיון: לחשוף ל-global
+
+  // דוגמה גלובלית לשימוש ב-main.js:
+  window.db = getFirestore(app);
+
+  // לחשוף את הפונקציות לשימוש בלי ES module imports:
+  window.fs = {
+    doc, getDoc, setDoc, updateDoc,
+    addDoc, collection, query, where, onSnapshot
+  };
+</script>
+
+
 <script src="./firebase-config.js"></script>                       
   <!-- פה נטען את הקוד הראשי של האפליקציה (שנעבוד עליו עכשיו) -->
   <script src="./JS/main.js"></script>

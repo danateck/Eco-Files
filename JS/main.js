@@ -38,6 +38,16 @@ async function saveFileToDB(docId, dataUrl) {
   });
 }
 
+
+// שימוש בעזרי Firestore מהחלון (שנקבעו ב-firebase-config.js)
+const db = window.db;                 // ה-DB הגלובלי
+const {
+  doc, getDoc, setDoc, updateDoc,
+  addDoc, collection, query, where, onSnapshot
+} = (window.fs || {});
+
+
+
 // שליפה של קובץ מה-DB לפי docId
 async function loadFileFromDB(docId) {
   const db = await openDB();
@@ -1020,7 +1030,7 @@ function openSharedView() {
   docsList.classList.add("shared-mode");
 
   const me = allUsersData[userNow];
-  const myEmail = (me.email || userNow);
+ const myEmail = (me.email || userNow).toLowerCase();
 
   // ===== עטיפת ניהול =====
   const wrap = document.createElement("div");
@@ -1156,6 +1166,42 @@ wrap.className = "shared-container";
   renderSharedFoldersList();
   renderPending();
 
+listenInvitesForMe(myEmail);
+
+
+function listenInvitesForMe(myEmail) {
+  const q = query(
+    collection(db, "invites"),
+    where("toEmail", "==", myEmail.toLowerCase()),
+    where("status", "==", "pending")
+  );
+
+  // מאזינים בזמן אמת להזמנות ממתינות
+  onSnapshot(q, (snap) => {
+    const me = allUsersData[userNow];
+    me.incomingShareRequests = []; // נבנה מרשימת הענן
+    snap.forEach((docSnap) => {
+      const inv = docSnap.data();
+      me.incomingShareRequests.push({
+        folderId: inv.folderId,
+        folderName: inv.folderName,
+        fromEmail: inv.fromEmail,
+        status: inv.status,
+        _inviteDocId: docSnap.id // נשמור מזהה לצורך עדכון/אישור/דחייה
+      });
+    });
+    saveAllUsersDataToStorage(allUsersData);
+    // נרנדר מחדש את בלוק ה"Pending"
+    const pendingWrap = document.getElementById("sf_pending") || pendingBox.querySelector("#sf_pending");
+    if (pendingWrap) {
+      // יש לך כבר renderPending(); פשוט נקרא לו
+      renderPending();
+    }
+  });
+}
+
+
+
   // ===== אירועים על רשימת התיקיות =====
   listWrap.addEventListener("click", (ev) => {
     const t = ev.target;
@@ -1224,37 +1270,50 @@ docsList.appendChild(docsBox);
       }
 
       // לחצן הזמנה במסך פרטי התיקייה — אותה לוגיקה בדיוק
-      membersBar.querySelector("#detail_inv_btn").addEventListener("click", () => {
-        const emailEl = membersBar.querySelector("#detail_inv_email");
-        const targetEmail = (emailEl.value || "").trim().toLowerCase();
-        if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
+     membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
+  const emailEl = membersBar.querySelector("#detail_inv_email");
+  const targetEmail = (emailEl.value || "").trim().toLowerCase();
+  if (!targetEmail) { showNotification("הקלידי מייל של הנמען", true); return; }
 
-        const targetUname = findUsernameByEmail(allUsersData, targetEmail);
-        if (!targetUname) { showNotification("אין אדם כזה (המייל לא קיים במערכת)", true); return; }
+  // 1) מאמתים שקיים משתמש כזה ב-Firestore (אוסף users, document id = email)
+  const userDoc = await getDoc(doc(db, "users", targetEmail));
+  if (!userDoc.exists()) {
+    showNotification("אין אדם כזה (המייל לא קיים במערכת)", true);
+    return;
+  }
 
-        const myLower = (allUsersData[userNow].email || userNow).toLowerCase();
-        if (targetEmail === myLower) { showNotification("את כבר חברה בתיקייה הזו", true); return; }
+  // 2) לא מאפשרים להזמין את עצמי
+  const myLower = (allUsersData[userNow].email || userNow).toLowerCase();
+  if (targetEmail === myLower) {
+    showNotification("את כבר חברה בתיקייה הזו", true);
+    return;
+  }
 
-        const meUser = allUsersData[userNow];
-        meUser.outgoingShareRequests.push({
-          folderId: openId,
-          folderName: meUser.sharedFolders[openId]?.name || "",
-          toEmail: targetEmail,
-          status: "pending"
-        });
+  // 3) יוצרים הזמנה בענן (אוסף invites)
+  const meUser = allUsersData[userNow];
+  await addDoc(collection(db, "invites"), {
+    folderId: openId,
+    folderName: meUser.sharedFolders[openId]?.name || "",
+    fromEmail: myLower,
+    toEmail: targetEmail,
+    status: "pending",
+    createdAt: Date.now()
+  });
 
-        ensureUserSharedFields(allUsersData, targetUname);
-        allUsersData[targetUname].incomingShareRequests.push({
-          folderId: openId,
-          folderName: meUser.sharedFolders[openId]?.name || "",
-          fromEmail: myLower,
-          status: "pending"
-        });
+  // נשמור גם מקומית כדי שהמסך הנוכחי יתעדכן מיד, אבל האמת היא שהסנכרון הענני יעשה את שלו
+  meUser.outgoingShareRequests ||= [];
+  meUser.outgoingShareRequests.push({
+    folderId: openId,
+    folderName: meUser.sharedFolders[openId]?.name || "",
+    toEmail: targetEmail,
+    status: "pending"
+  });
+  saveAllUsersDataToStorage(allUsersData);
 
-        saveAllUsersDataToStorage(allUsersData);
-        showNotification("הזמנה נשלחה (ממתינה לאישור)");
-        emailEl.value = "";
-      });
+  showNotification("הזמנה נשלחה (ממתינה לאישור)");
+  emailEl.value = "";
+});
+
 
       return;
     }
