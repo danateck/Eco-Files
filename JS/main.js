@@ -374,36 +374,55 @@ async function updateInviteStatus(inviteId, newStatus) {
 
 
 // הוספת חבר לתיקייה משותפת (Firestore)
+// הוספת חבר לתיקייה משותפת (Firestore) - גרסה עמידה
 async function addMemberToSharedFolder(folderId, memberEmail, folderName, ownerEmail) {
   try {
     const key = memberEmail.trim().toLowerCase();
-    const userRef = window.fs.doc(window.db, "users", key);
-    
-    // יצירת או עדכון מבנה התיקייה אצל החבר החדש
-    const folderData = {
-      [`sharedFolders.${folderId}`]: {
-        name: folderName,
-        owner: ownerEmail.toLowerCase(),
-        members: window.fs.arrayUnion(key),   
-        joinedAt: Date.now()
-      }
-    };
-    
-    await window.fs.setDoc(userRef, folderData, { merge: true });
-    
-    // עדכון גם אצל הבעלים
     const ownerKey = ownerEmail.trim().toLowerCase();
+
+    const userRef  = window.fs.doc(window.db, "users", key);
     const ownerRef = window.fs.doc(window.db, "users", ownerKey);
-   await window.fs.updateDoc(ownerRef, {
-  [`sharedFolders.${folderId}.members`]: window.fs.arrayUnion(key)  // ✅
-});
-    
+
+    // 1) ודא שקיימים מסמכי המשתמשים (יוצר אם חסר)
+    await window.fs.setDoc(userRef,  { email: key },   { merge: true });
+    await window.fs.setDoc(ownerRef, { email: ownerKey }, { merge: true });
+
+    // 2) ודא שקיים אובייקט התיקייה אצל שני הצדדים
+    const baseFolderObj = {
+      name: folderName,
+      owner: ownerKey,
+      // נתחיל במערך ריק; נמלא עם arrayUnion בהמשך
+      members: []
+    };
+
+    await window.fs.setDoc(
+      userRef,
+      { [`sharedFolders.${folderId}`]: baseFolderObj },
+      { merge: true }
+    );
+
+    await window.fs.setDoc(
+      ownerRef,
+      { [`sharedFolders.${folderId}`]: baseFolderObj },
+      { merge: true }
+    );
+
+    // 3) הוסף את החבר החדש למערך החברים אצל שני הצדדים (יוצר את השדה אם אינו קיים)
+    await window.fs.updateDoc(userRef, {
+      [`sharedFolders.${folderId}.members`]: window.fs.arrayUnion(key, ownerKey)
+    });
+
+    await window.fs.updateDoc(ownerRef, {
+      [`sharedFolders.${folderId}.members`]: window.fs.arrayUnion(key, ownerKey)
+    });
+
     return true;
   } catch (e) {
     console.error("שגיאה בהוספת חבר:", e);
     return false;
   }
 }
+
 
 
 /*************************
