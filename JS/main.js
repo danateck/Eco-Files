@@ -423,6 +423,121 @@ async function addMemberToSharedFolder(folderId, memberEmail, folderName, ownerE
   }
 }
 
+// --- Fetch and watch members for a shared folder from Firestore (owner's doc) ---
+async function fetchFolderMembersFromOwner(ownerEmail, folderId) {
+  if (!isFirebaseAvailable()) return [];
+  const ownerKey = normalizeEmail(ownerEmail || "");
+  const ownerRef = window.fs.doc(window.db, "users", ownerKey);
+  const snap = await window.fs.getDoc(ownerRef);
+  if (!snap.exists()) return [];
+  const data = snap.data() || {};
+  const members = (data.sharedFolders && data.sharedFolders[folderId] && data.sharedFolders[folderId].members) || [];
+  return Array.isArray(members) ? members : [];
+}
+
+// --- Members: live watch on owner's doc
+function watchFolderMembersFromOwner(ownerEmail, folderId, onChange) {
+  if (!isFirebaseAvailable()) return () => {};
+  const ownerKey = normalizeEmail(ownerEmail || "");
+  const ownerRef = window.fs.doc(window.db, "users", ownerKey);
+  const unsub = window.fs.onSnapshot(ownerRef, (snap) => {
+    const data = snap.data() || {};
+    const members = (data.sharedFolders && data.sharedFolders[folderId] && data.sharedFolders[folderId].members) || [];
+    onChange(Array.isArray(members) ? members : []);
+  }, (err) => console.error("watchFolderMembersFromOwner error", err));
+  return unsub;
+}
+
+
+// --- Shared docs: write one record per doc in a folder
+async function upsertSharedDocRecord(docObj, folderId) {
+  if (!isFirebaseAvailable()) {
+    console.warn("Firebase not available, cannot sync shared doc");
+    return false;
+  }
+
+  try {
+    const ownerEmail = (allUsersData[userNow].email || userNow).toLowerCase();
+    const recId = `${docObj.id}_${ownerEmail}`;
+
+    console.log("📤 Syncing shared doc to Firestore:", {
+      recId,
+      folderId,
+      ownerEmail,
+      fileName: docObj.title || docObj.fileName
+    });
+
+    const ref = window.fs.doc(window.db, "sharedDocs", recId);
+    await window.fs.setDoc(ref, {
+      folderId,
+      ownerEmail,
+      id: docObj.id,
+      title: docObj.title || docObj.fileName || docObj.name || "מסמך",
+      fileName: docObj.fileName || docObj.title || docObj.name || "מסמך",
+      category: docObj.category || [],
+      uploadedAt: docObj.uploadedAt || Date.now(),
+      warrantyStart: docObj.warrantyStart || null,
+      warrantyExpiresAt: docObj.warrantyExpiresAt || null,
+      org: docObj.org || "",
+      year: docObj.year || "",
+      recipient: docObj.recipient || [],
+      lastUpdated: Date.now()
+    }, { merge: true });
+    
+    console.log("✅ Successfully synced shared doc to Firestore");
+    return true;
+  } catch (e) {
+    console.error("❌ Error syncing shared doc to Firestore:", e);
+    return false;
+  }
+}
+
+// --- Shared docs: fetch once by folder
+async function fetchSharedFolderDocsFromFirestore(folderId) {
+  if (!isFirebaseAvailable()) return [];
+  const col = window.fs.collection(window.db, "sharedDocs");
+  const q   = window.fs.query(col, window.fs.where("folderId", "==", folderId));
+  const snap = await window.fs.getDocs(q);
+  const out = [];
+  snap.forEach(d => out.push({ id: d.id, ...d.data(), _ownerEmail: d.data().ownerEmail }));
+  return out;
+}
+
+// --- Shared docs: live watch by folder
+function watchSharedFolderDocs(folderId, onChange) {
+  if (!isFirebaseAvailable()) return () => {};
+  const col = window.fs.collection(window.db, "sharedDocs");
+  const q   = window.fs.query(col, window.fs.where("folderId", "==", folderId));
+  const unsub = window.fs.onSnapshot(q, (snap) => {
+    const out = [];
+    snap.forEach(d => out.push({ id: d.id, ...d.data(), _ownerEmail: d.data().ownerEmail }));
+    onChange(out);
+  }, (err) => console.error("watchSharedFolderDocs error", err));
+  return unsub;
+}
+
+// --- (Optional) sync my local docs that are in a shared folder -> Firestore
+// --- Shared docs: mirror my locally-tagged docs into Firestore (self-contained)
+async function syncMySharedDocsToFirestore() {
+  if (!isFirebaseAvailable()) return;
+
+  // pull fresh data from storage + current user safely (no outer-scope vars)
+  const meKey = (getCurrentUser && getCurrentUser()) || "defaultUser";
+  const allUsers = (typeof loadAllUsersDataFromStorage === "function")
+    ? loadAllUsersDataFromStorage()
+    : {};
+  const me = allUsers[meKey] || {};
+  const myDocs = Array.isArray(me.docs) ? me.docs : [];
+
+  for (const d of myDocs) {
+    if (!d._trashed && d.sharedFolderId) {
+      await upsertSharedDocRecord(d, d.sharedFolderId);
+    }
+  }
+}
+
+
+
 
 
 /*************************
@@ -1160,9 +1275,12 @@ saveAllUsersDataToStorage(allUsersData);
       </button>
     `;
 
-    card.innerHTML = `
-      <p class="doc-card-title">${doc.title}</p>
+  // Use title, fallback to fileName, fallback to originalFileName
+const displayTitle = doc.title || doc.fileName || doc.originalFileName || "מסמך";
 
+
+card.innerHTML = `
+  <p class="doc-card-title">${displayTitle}</p>
       <div class="doc-card-meta">
         <span>ארגון: ${doc.org || "לא ידוע"}</span>
         <span>שנה: ${doc.year || "-"}</span>
@@ -1209,13 +1327,26 @@ addToSharedBtn.className = "doc-action-btn";
 addToSharedBtn.textContent = "הכנס לתיקייה משותפת";
 addToSharedBtn.addEventListener("click", () => {
   const me = allUsersData[userNow];
-  openSharedFolderPicker(me, (folderId) => {
+  openSharedFolderPicker(me, async (folderId) => {
     const docId = doc.id;
     const i = allDocsData.findIndex(d => d.id === docId);
     if (i > -1) {
       allDocsData[i].sharedFolderId = folderId;
       setUserDocs(userNow, allDocsData, allUsersData);
-      showNotification("המסמך שויך לתיקייה המשותפת");
+      
+      // Sync to Firestore immediately
+      if (isFirebaseAvailable()) {
+        showLoading("משתף מסמך...");
+        try {
+          await upsertSharedDocRecord(allDocsData[i], folderId);
+          console.log("✅ Document synced to Firestore for all members");
+        } catch (e) {
+          console.error("Error syncing document:", e);
+        }
+        hideLoading();
+      }
+      
+      showNotification("המסמך שויך לתיקייה המשותפת ✅");
       const currentCat = categoryTitle.textContent;
       if (currentCat === "אחסון משותף") {
         openSharedView();
@@ -1569,7 +1700,7 @@ async function renderPending() {
   });
 
   // ===== אירועים על רשימת התיקיות =====
-  listWrap.addEventListener("click", (ev) => {
+  listWrap.addEventListener("click", async (ev) => {
     const t = ev.target;
     const openId   = t.getAttribute?.("data-open");
     const renameId = t.getAttribute?.("data-rename");
@@ -1595,35 +1726,111 @@ async function renderPending() {
       docsList.appendChild(membersBar);
 
       // רשימת משתתפים
-      const membersList = document.createElement("div");
-      membersList.className = "pending-wrap";
-      membersList.style.gap = "6px";
-      const m = me.sharedFolders[openId]?.members || [];
-      membersList.innerHTML = `
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          ${m.map(email => `<span class="btn-min" style="cursor:default">${email}</span>`).join("")}
-        </div>
-      `;
-      docsList.appendChild(membersList);
+     // רשימת משתתפים (Firestore live)
+const membersList = document.createElement("div");
+membersList.className = "pending-wrap";
+membersList.style.gap = "6px";
+membersList.innerHTML = `<div id="members_chips" style="display:flex;flex-wrap:wrap;gap:8px;"></div>`;
+docsList.appendChild(membersList);
 
+const ownerEmailForThisFolder = (me.sharedFolders[openId]?.owner || "").toLowerCase();
+const chips = membersList.querySelector("#members_chips");
+
+const paintMembers = (arr = []) => {
+  chips.innerHTML = arr.map(email => `<span class="btn-min" style="cursor:default">${email}</span>`).join("");
+};
+
+// first paint + live updates
+if (isFirebaseAvailable()) {
+  // one-time fetch
+  fetchFolderMembersFromOwner(ownerEmailForThisFolder, openId)
+    .then(paintMembers)
+    .catch(err => console.warn("fetchFolderMembersFromOwner failed", err));
+
+  // live
+  if (window._stopMembersWatch) try { window._stopMembersWatch(); } catch(e) {}
+  window._stopMembersWatch = watchFolderMembersFromOwner(ownerEmailForThisFolder, openId, paintMembers);
+} else {
+  // offline fallback from local cache
+  paintMembers(me.sharedFolders[openId]?.members || []);
+}
+
+
+      
       // כותרת "מסמכים משותפים"
 const docsHead = document.createElement("div");
 docsHead.className = "cozy-head";
-docsHead.innerHTML = `<h3 style="margin:0;">מסמכים משותפים</h3><div></div>`;
+docsHead.innerHTML = `
+  <h3 style="margin:0;">מסמכים משותפים</h3>
+  <button id="refresh_docs_btn" class="btn-cozy">🔄 רענן רשימה</button>
+`;
 docsList.appendChild(docsHead);
 
 // קונטיינר הכרטיסיות – גריד רספונסיבי
 const docsBox = document.createElement("div");
 docsBox.style.display = "grid";
 docsBox.style.gap = "24px";
+docsBox.className = "docs-grid";
 docsBox.style.gridTemplateColumns = "repeat(auto-fit, minmax(260px, 1fr))";
 docsBox.style.alignItems = "start";
 docsBox.style.justifyItems = "stretch";
 docsList.appendChild(docsBox);
 
 
-      const docs = collectSharedFolderDocs(allUsersData, openId);
-      const sorted = sortDocs(docs);
+      // Prefer Firestore (cross-device). Fallback to local for offline.
+// Prefer Firestore (cross-device). Fallback to local for offline.
+// Prefer Firestore (cross-device). Fallback to local for offline.
+async function loadAndDisplayDocs() {
+  docsBox.innerHTML = "<div style='opacity:.7;padding:20px;text-align:center'>טוען מסמכים...</div>";
+  
+  if (isFirebaseAvailable()) {
+    await syncMySharedDocsToFirestore();
+
+    const first = await fetchSharedFolderDocsFromFirestore(openId);
+    docsBox.innerHTML = "";
+    
+    if (first.length === 0) {
+      docsBox.innerHTML = "<div style='opacity:.7;padding:20px;text-align:center'>אין עדיין מסמכים בתיקייה זו</div>";
+    } else {
+      sortDocs(first).forEach(d => {
+        const card = buildDocCard(d, "shared");
+        const meta = card.querySelector(".doc-card-meta");
+        if (meta) {
+          const span = document.createElement("span");
+          span.textContent = `הועלה ע"י: ${d._ownerEmail || "-"}`;
+          meta.appendChild(span);
+        }
+        docsBox.appendChild(card);
+      });
+    }
+
+    if (window._stopSharedDocsWatch) try { window._stopSharedDocsWatch(); } catch(e) {}
+    window._stopSharedDocsWatch = watchSharedFolderDocs(openId, (rows) => {
+      console.log("🔄 Real-time update: received", rows.length, "documents");
+      docsBox.innerHTML = "";
+      if (rows.length === 0) {
+        docsBox.innerHTML = "<div style='opacity:.7;padding:20px;text-align:center'>אין עדיין מסמכים בתיקייה זו</div>";
+      } else {
+        sortDocs(rows).forEach(d => {
+          const card = buildDocCard(d, "shared");
+          const meta = card.querySelector(".doc-card-meta");
+          if (meta) {
+            const span = document.createElement("span");
+            span.textContent = `הועלה ע"י: ${d._ownerEmail || "-"}`;
+            meta.appendChild(span);
+          }
+          docsBox.appendChild(card);
+        });
+      }
+    });
+  } else {
+    const docs = collectSharedFolderDocs(allUsersData, openId);
+    const sorted = sortDocs(docs);
+    docsBox.innerHTML = "";
+    
+    if (sorted.length === 0) {
+      docsBox.innerHTML = "<div style='opacity:.7;padding:20px;text-align:center'>אין עדיין מסמכים בתיקייה זו (מצב לא מקוון)</div>";
+    } else {
       for (const d of sorted) {
         const card = buildDocCard(d, "shared");
         const meta = card.querySelector(".doc-card-meta");
@@ -1634,6 +1841,21 @@ docsList.appendChild(docsBox);
         }
         docsBox.appendChild(card);
       }
+    }
+  }
+}
+
+// Initial load
+await loadAndDisplayDocs();
+
+// Refresh button handler
+docsHead.querySelector("#refresh_docs_btn").addEventListener("click", async () => {
+  showNotification("מרענן רשימת מסמכים...");
+  await loadAndDisplayDocs();
+  showNotification("הרשימה עודכנה ✅");
+});
+
+
 
       // לחצן הזמנה במסך פרטי התיקייה – אותה לוגיקה בדיוק
 membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
@@ -1758,7 +1980,26 @@ pendingBox.addEventListener("click", async (ev) => {
         members: [ownerEmail, myEmail]
       };
       saveAllUsersDataToStorage(allUsersData);
-      
+      {
+  const acceptedEmail = myEmail;
+  const folderId   = t.getAttribute("data-folder");
+  const ownerEmail = (t.getAttribute("data-owner") || "").toLowerCase();
+
+  const ownerName = findUsernameByEmail(allUsersData, ownerEmail) || ownerEmail;
+  ensureUserSharedFields(allUsersData, ownerName);
+
+  const ownerSF = allUsersData[ownerName].sharedFolders || {};
+  if (!ownerSF[folderId]) ownerSF[folderId] = { name: t.getAttribute("data-fname") || "תיקייה משותפת", owner: ownerEmail, members: [] };
+  const arr = ownerSF[folderId].members || (ownerSF[folderId].members = []);
+  if (!arr.includes(acceptedEmail)) arr.push(acceptedEmail);
+
+  allUsersData[ownerName].sharedFolders = ownerSF;
+  saveAllUsersDataToStorage(allUsersData);
+
+  if (categoryTitle.textContent === (ownerSF[folderId].name || "תיקייה משותפת")) {
+    openSharedView();
+  }
+}
       showNotification("הצטרפת לתיקייה המשותפת ✔️");
     } else {
       showNotification("שגיאה בהצטרפות, נסי שוב", true);
@@ -2047,13 +2288,20 @@ renderPending();
           mimeType: file.type,
           hasFile: true // יש קובץ שמור ב-IndexedDB
         };
+allDocsData.push(newDoc);
+setUserDocs(userNow, allDocsData, allUsersData);
 
-        allDocsData.push(newDoc);
-        setUserDocs(userNow, allDocsData, allUsersData);
+// If this doc is in a shared folder, sync to Firestore immediately
+if (newDoc.sharedFolderId && isFirebaseAvailable()) {
+  console.log("🔄 New doc has sharedFolderId, syncing to Firestore...");
+  try {
+    await upsertSharedDocRecord(newDoc, newDoc.sharedFolderId);
+  } catch (e) {
+    console.error("Error syncing new doc to Firestore:", e);
+  }
+}
 
-  
-
-        // ניסוח הודעה נחמה לפי התיקייה
+// ניסוח הודעה נחמה לפי התיקייה
 let niceCat = guessedCategory && guessedCategory.trim()
   ? guessedCategory.trim()
   : "התיקייה";
