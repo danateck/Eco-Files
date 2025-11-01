@@ -218,6 +218,8 @@ async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderNa
   if (!isFirebaseAvailable()) {
     console.warn("Firebase לא זמין, שומר הזמנה ב-localStorage");
     try {
+      fromEmail = normalizeEmail(fromEmail);
+toEmail   = normalizeEmail(toEmail);
       const allUsers = loadAllUsersDataFromStorage();
       const targetUser = findUsernameByEmail(allUsers, toEmail);
       
@@ -230,8 +232,8 @@ async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderNa
       allUsers[targetUser].incomingShareRequests.push({
         folderId,
         folderName,
-        fromEmail: fromEmail.toLowerCase(),
-        toEmail: toEmail.toLowerCase(),
+        fromEmail: fromEmail.trim().toLowerCase(),
+        toEmail: toEmail.trim().toLowerCase(),
         status: "pending",
         createdAt: Date.now()
       });
@@ -251,8 +253,8 @@ async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderNa
     await window.fs.addDoc(inviteRef, {
       folderId,
       folderName,
-      fromEmail: fromEmail.toLowerCase(),
-      toEmail: toEmail.toLowerCase(),
+      fromEmail: fromEmail.trim().toLowerCase(),
+      toEmail: toEmail.trim().toLowerCase(),
       status: "pending",
       createdAt: Date.now()
     });
@@ -272,8 +274,8 @@ async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderNa
       allUsers[targetUser].incomingShareRequests.push({
         folderId,
         folderName,
-        fromEmail: fromEmail.toLowerCase(),
-        toEmail: toEmail.toLowerCase(),
+        fromEmail: fromEmail.trim().toLowerCase(),
+        toEmail: toEmail.trim().toLowerCase(),
         status: "pending",
         createdAt: Date.now()
       });
@@ -294,37 +296,64 @@ async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderNa
 // קבלת הזמנות ממתינות למשתמש (Firestore)
 // קבלת הזמנות ממתינות למשתמש (Firestore)
 async function getPendingInvitesFromFirestore(userEmail) {
-  // טען את הנתונים מ-localStorage
   const allUsers = loadAllUsersDataFromStorage();
-  const currentUser = getCurrentUser();
-  
-  // אם Firebase לא זמין, בדוק ב-localStorage
+  const currentUserKey = getCurrentUser(); // מה-LocalStorage
+  const currentUserObj = allUsers[currentUserKey] || {};
+
+  // תמיד אימייל מנורמל של המשתמש המחובר, אלא אם הועבר userEmail מפורש
+  const myEmail = normalizeEmail(
+    userEmail || currentUserObj.email || currentUserKey || ""
+  );
+
   if (!isFirebaseAvailable()) {
     console.warn("Firebase לא זמין, בודק ב-localStorage");
-    const me = allUsers[currentUser];
+    const me = allUsers[currentUserKey];
     return (me?.incomingShareRequests || []).filter(r => r.status === "pending");
   }
-  
+
   try {
-    const key = userEmail.trim().toLowerCase();
     const invitesRef = window.fs.collection(window.db, "shareInvites");
     const q = window.fs.query(
       invitesRef,
-      window.fs.where("toEmail", "==", key),
+      window.fs.where("toEmail", "==", myEmail),
       window.fs.where("status", "==", "pending")
     );
     const snap = await window.fs.getDocs(q);
     const invites = [];
     snap.forEach(d => invites.push({ id: d.id, ...d.data() }));
+    console.log("📩 Pending invites for", myEmail, "=>", invites.length, invites);
     return invites;
   } catch (e) {
     console.error("שגיאה בטעינת הזמנות מ-Firestore, עובר ל-localStorage:", e);
-    // Fallback to localStorage
-    const me = allUsers[currentUser];
+    const me = allUsers[currentUserKey];
     return (me?.incomingShareRequests || []).filter(r => r.status === "pending");
   }
 }
 
+
+let stopWatching = null;
+
+function watchPendingInvites(onChange) {
+  const allUsers = loadAllUsersDataFromStorage();
+  const currentUserKey = getCurrentUser();
+  const email = normalizeEmail((allUsers[currentUserKey]?.email) || currentUserKey || "");
+  if (!isFirebaseAvailable() || !email) return () => {};
+
+  const invitesRef = window.fs.collection(window.db, "shareInvites");
+  const q = window.fs.query(
+    invitesRef,
+    window.fs.where("toEmail", "==", email),
+    window.fs.where("status", "==", "pending")
+  );
+  const unsub = window.fs.onSnapshot(q, (snap) => {
+    const invites = [];
+    snap.forEach(d => invites.push({ id: d.id, ...d.data() }));
+    onChange(invites);
+  }, (err) => {
+    console.error("onSnapshot error", err);
+  });
+  return unsub;
+}
 
 
 // עדכון סטטוס הזמנה (Firestore)
@@ -1345,7 +1374,6 @@ function openSharedFolderPicker(me, onSelect) {
 }
 
 
-
 // === UI: רינדור ניהול תיקיות משותפות + בקשות ממתינות ===
 function openSharedView() {
   docsList.classList.remove("shared-mode");
@@ -1466,6 +1494,33 @@ wrap.className = "shared-container";
     }
   }
 
+
+  // מצייר רק את ה-UI לפי מערך הזמנות שניתן
+function paintPending(invites) {
+  const wrap = pendingBox.querySelector("#sf_pending");
+  wrap.innerHTML = "";
+
+  if (!invites || !invites.length) {
+    wrap.innerHTML = `<div style="opacity:.7">אין בקשות ממתינות</div>`;
+    return;
+  }
+
+  for (const inv of invites) {
+    const line = document.createElement("div");
+    line.className = "pending-row";
+    line.innerHTML = `
+      הזמנה לתיקייה "<b>${inv.folderName}</b>" מאת ${inv.fromEmail}
+      <div>
+        <button class="btn-min" data-accept="${inv.id}" data-folder="${inv.folderId}" data-fname="${inv.folderName}" data-owner="${inv.fromEmail}">אשר</button>
+        <button class="btn-min btn-danger" data-reject="${inv.id}">סרב</button>
+      </div>
+    `;
+    wrap.appendChild(line);
+  }
+}
+
+
+
   // ===== רינדור בקשות =====
 async function renderPending() {
   const wrap = pendingBox.querySelector("#sf_pending");
@@ -1473,7 +1528,7 @@ async function renderPending() {
   
   const myEmail = (allUsersData[userNow].email || userNow).toLowerCase();
   const invites = await getPendingInvitesFromFirestore(myEmail);
-  
+  paintPending(invites);
   wrap.innerHTML = "";
   
   if (!invites.length) {
