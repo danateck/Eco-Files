@@ -1302,6 +1302,32 @@ element.style {
 </script>
 
 
+<!-- Load Firebase ONCE as a module -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import { getFirestore, collection, addDoc, getDoc, getDocs, doc, query, where, updateDoc, setDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  
+  const firebaseConfig = {
+    apiKey: "AIzaSyBPr4X2_8JYCgXzMlTcVB0EJLhup9CdyYw",
+    authDomain: "login-page-echo-file.firebaseapp.com",
+    projectId: "login-page-echo-file",
+    storageBucket: "login-page-echo-file.firebasestorage.app",
+    messagingSenderId: "200723524735",
+    appId: "1:200723524735:web:9eaed6ef10cbc2c406234a"
+  };
+  
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  
+  // Make available globally
+  window.db = db;
+  window.fs = { collection, addDoc, getDoc, getDocs, doc, query, where, updateDoc, setDoc, arrayUnion };
+  
+  console.log("✅ Firebase initialized and available globally!");
+  console.log("📊 DB object:", db);
+</script>
+
+
 <!-- חשוב: type="module" -->
 <script type="module" src="firebase-config.js"></script>
 <!-- ואחרי זה את main.js -->

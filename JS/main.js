@@ -12,13 +12,15 @@
 // value שמור זה ה-base64 (dataURL)
 
 // בדיקה אם Firebase זמין
-function isFirebaseAvailable() {
+window.isFirebaseAvailable = function() {
   try {
-    return !!(window.firebase && window.db && navigator.onLine);
+    // check Firestore connection objects exist
+    return !!(window.db && window.fs && typeof window.fs.getDoc === "function" && navigator.onLine);
   } catch (e) {
+    console.error("Error checking Firebase:", e);
     return false;
   }
-}
+};
 
 
 
@@ -81,6 +83,45 @@ async function deleteFileFromDB(docId) {
   });
 }
 
+// סנכרון משתמש חדש ל-Firestore
+
+// סנכרון משתמש חדש ל-Firestore
+async function syncUserToFirestore(email, password = "") {
+  console.log("🔄 מנסה לסנכרן משתמש:", email);
+  
+  // בדיקה פשוטה יותר
+  if (!window.db || !window.fs) {
+    console.warn("❌ Firebase לא זמין - חסר DB או FS");
+    return false;
+  }
+  
+  if (!navigator.onLine) {
+    console.warn("❌ אין חיבור לאינטרנט");
+    return false;
+  }
+  
+  try {
+    const key = email.trim().toLowerCase();
+    console.log("🔑 Creating user document for:", key);
+    
+    const userRef = window.fs.doc(window.db, "users", key);
+    
+    await window.fs.setDoc(userRef, {
+      email: key,
+      password: password,
+      sharedFolders: {},
+      createdAt: Date.now()
+    }, { merge: true });
+    
+    console.log("✅ משתמש סונכרן ל-Firestore:", key);
+    return true;
+  } catch (e) {
+    console.error("❌ שגיאה בסנכרון משתמש ל-Firestore:", e);
+    console.error("Error details:", e.message, e.code);
+    return false;
+  }
+}
+
 async function checkUserExistsInFirestore(email) {
   const key = email.trim().toLowerCase();
   console.log("בודק משתמש ב-Firestore:", key);
@@ -128,6 +169,48 @@ async function checkUserExistsInFirestore(email) {
     return false;
   }
 }
+
+
+
+window.syncAllUsers = async function() {
+  if (!isFirebaseAvailable()) {
+    console.warn("❌ Firebase unavailable");
+    return;
+  }
+  const allUsers = loadAllUsersDataFromStorage();
+  let successCount = 0;
+  for (const [username, userData] of Object.entries(allUsers)) {
+    const email = userData.email || username;
+    const password = userData.password || "";
+    const result = await syncUserToFirestore(email, password);
+    if (result) successCount++;
+  }
+  console.log(`✅ Synced ${successCount} users to Firestore`);
+};
+
+
+
+// הוסף פונקציה זו איפשהו בקוד
+async function syncAllLocalUsersToFirestore() {
+  if (!isFirebaseAvailable()) {
+    showNotification("Firebase לא זמין", true);
+    return;
+  }
+  
+  const allUsers = loadAllUsersDataFromStorage();
+  let count = 0;
+  
+  for (const [username, userData] of Object.entries(allUsers)) {
+    const email = userData.email || username;
+    const success = await syncUserToFirestore(email, userData.password || "");
+    if (success) count++;
+  }
+  
+  showNotification(`✅ ${count} משתמשים סונכרנו ל-Firestore`);
+}
+
+ syncAllLocalUsersToFirestore();
+
 
 
 async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderName) {
