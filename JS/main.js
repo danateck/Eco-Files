@@ -457,7 +457,10 @@ async function upsertSharedDocRecord(docObj, folderId) {
   }
 
   try {
-    const ownerEmail = (allUsersData[userNow].email || userNow).toLowerCase();
+    // Get current user safely
+    const currentUser = getCurrentUser() || "defaultUser";
+    const allUsers = loadAllUsersDataFromStorage();
+    const ownerEmail = (allUsers[currentUser]?.email || currentUser).toLowerCase();
     const recId = `${docObj.id}_${ownerEmail}`;
 
     console.log("📤 Syncing shared doc to Firestore:", {
@@ -491,7 +494,6 @@ async function upsertSharedDocRecord(docObj, folderId) {
     return false;
   }
 }
-
 // --- Shared docs: fetch once by folder
 async function fetchSharedFolderDocsFromFirestore(folderId) {
   if (!isFirebaseAvailable()) return [];
