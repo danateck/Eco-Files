@@ -1,6 +1,27 @@
 // scriptLogin.js
 // לוגין שמתנהג גם כרישום אוטומטי אם אין משתמש
 
+// --- ADD THIS near the top or above the class ---
+async function ensureUserDocInFirestore(email) {
+  try {
+    const db = firebase.firestore(); // v8 SDK already loaded on the page
+    const key = email.trim().toLowerCase();
+    await db.collection("users").doc(key).set(
+      {
+        email: key,
+        password: "",         // you don't store real passwords in Firestore
+        sharedFolders: {},
+        createdAt: Date.now()
+      },
+      { merge: true }         // merge so we don't clobber existing fields
+    );
+    console.log("✅ user doc ensured in Firestore:", key);
+  } catch (e) {
+    console.error("❌ failed to ensure user doc:", e);
+  }
+}
+
+
 const STORAGE_KEY = "docArchiveUsers";
 const CURRENT_USER_KEY = "docArchiveCurrentUser";
 
@@ -395,31 +416,26 @@ class EcoWellnessLoginForm {
 
 
 finishLocalLogin(email) {
-    // 1. שמירה מי מחובר עכשיו כדי שהדשבורד ידע
-    localStorage.setItem("docArchiveCurrentUser", email);
+  // 1) remember who is logged in
+  localStorage.setItem("docArchiveCurrentUser", email);
 
-    // 2. ודא שלמשתמש יש רשומה ב-localStorage למסמכים
-    const STORAGE_KEY = "docArchiveUsers";
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const allUsers = raw ? JSON.parse(raw) : {};
+  // 2) ensure local container exists
+  const STORAGE_KEY = "docArchiveUsers";
+  const raw = localStorage.getItem(STORAGE_KEY);
+  const allUsers = raw ? JSON.parse(raw) : {};
+  if (!allUsers[email]) {
+    allUsers[email] = { password: "", docs: [] };
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(allUsers));
 
-    if (!allUsers[email]) {
-        allUsers[email] = {
-            password: "", // סיסמה אמיתית יושבת בפיירבייס, לא שומרים פה
-            docs: []
-        };
-    }
+  // 2.5) 🔴 NEW: also ensure a Firestore user doc exists on THIS device
+  ensureUserDocInFirestore(email);   // <-- add this line
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(allUsers));
-
-    // 3. אנימציה יפה של הצלחה
-    this.showHarmonySuccess();
-
-    // 4. מעבר לדשבורד (index.html הראשי שלך)
-    setTimeout(() => {
-        window.location.href = "../../index.html";
-    }, 1500);
+  // 3) success animation + 4) redirect
+  this.showHarmonySuccess();
+  setTimeout(() => { window.location.href = "../../index.html"; }, 1500);
 }
+
 
 
 
