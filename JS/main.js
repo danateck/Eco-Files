@@ -214,12 +214,16 @@ async function syncAllLocalUsersToFirestore() {
 
 
 async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderName) {
+  // נורמליזציה של אימיילים אחידה
+  fromEmail = normalizeEmail(fromEmail);
+  toEmail   = normalizeEmail(toEmail);
+  
+  console.log("📤 Sending invite from", fromEmail, "to", toEmail);
+  
   // אם Firebase לא זמין, שמור ב-localStorage
   if (!isFirebaseAvailable()) {
     console.warn("Firebase לא זמין, שומר הזמנה ב-localStorage");
     try {
-      fromEmail = normalizeEmail(fromEmail);
-toEmail   = normalizeEmail(toEmail);
       const allUsers = loadAllUsersDataFromStorage();
       const targetUser = findUsernameByEmail(allUsers, toEmail);
       
@@ -232,8 +236,8 @@ toEmail   = normalizeEmail(toEmail);
       allUsers[targetUser].incomingShareRequests.push({
         folderId,
         folderName,
-        fromEmail: fromEmail.trim().toLowerCase(),
-        toEmail: toEmail.trim().toLowerCase(),
+        fromEmail: fromEmail,
+        toEmail: toEmail,
         status: "pending",
         createdAt: Date.now()
       });
@@ -253,8 +257,8 @@ toEmail   = normalizeEmail(toEmail);
     await window.fs.addDoc(inviteRef, {
       folderId,
       folderName,
-      fromEmail: fromEmail.trim().toLowerCase(),
-      toEmail: toEmail.trim().toLowerCase(),
+      fromEmail: fromEmail,
+      toEmail: toEmail,
       status: "pending",
       createdAt: Date.now()
     });
@@ -274,8 +278,8 @@ toEmail   = normalizeEmail(toEmail);
       allUsers[targetUser].incomingShareRequests.push({
         folderId,
         folderName,
-        fromEmail: fromEmail.trim().toLowerCase(),
-        toEmail: toEmail.trim().toLowerCase(),
+        fromEmail: fromEmail,
+        toEmail: toEmail,
         status: "pending",
         createdAt: Date.now()
       });
@@ -421,7 +425,7 @@ const CATEGORY_KEYWORDS = {
     "קופת גמל","קופתגמל","גמל","פנסיוני","פנסיונית",
     "מס הכנסה","מסהכנסה","מס הכנסה שנתי","דו\"ח שנתי","דו\"ח מס","דוח מס","מס שנתי",
     "החזר מס","החזרי מס","החזרמס","מע\"מ","מעמ","דיווח מע\"מ","דוח מע\"מ","דו\"ח מע\"מ",
-    "ביטוח רכב","ביטוח רכב חובה","ביטוח חובה","ביטוח מקיף","ביטוחדירה","ביטוח דירה","פרמיה","פרמיית ביטוח",
+    "ביטוח רכב","ביטוח רכב חובה","ביטוח חובה","ביטוח מקיף","ביטוחהדירה","ביטוח הדירה","פרמיה","פרמיית ביטוח",
     "פוליסה","פוליסת ביטוח","פרמיה לתשלום","חוב לתשלום","הודעת חיוב"
   ],
   "רפואה": [
@@ -430,14 +434,14 @@ const CATEGORY_KEYWORDS = {
     "קופת חולים","קופתחולים","קופה","קופת חולים כללית","כללית","מכבי","מאוחדת","לאומית",
     "רופא","רופאה","רופא משפחה","רופאת משפחה","רופא ילדים","רופאת ילדים",
     "סיכום ביקור","סיכוםביקור","סיכום מחלה","סיכום אשפוז","סיכום אשפוז ושחרור",
-    "מכתב שחרור","שחרור מבית חולים","שחרור מביה\"ח","שחרור מבית חולים כללי",
-    "בדיקת דם","בדיקות דם","בדיקות דמים","בדיקה דם","בדיקות מעבדה","מעבדה","בדיקות מעבדה",
+    "מכתב שחרור","שחרור מבית חולים","שחרור מבית\"ח","שחרור מבית חולים כללי",
+    "בדיקת דם","בדיקות דם","בדיקות המים","בדיקה דם","בדיקות מעבדה","מעבדה","בדיקות מעבדה",
     "אבחנה","אבחון","אבחנה רפואית","דיאגנוזה","דיאגניזה","דיאגנוזה רפואית",
-    "הפניה","הפנייה","הפניה לבדיקות","הפנייה לרופא מומחה","הפניה לרופא מומחה",
+    "הפניה","הפניית","הפניה לבדיקות","הפניית לרופא מומחה","הפניה לרופא מומחה",
     "תור לרופא","תור לרופאה","זימון תור","זימון בדיקה","זימון בדיקות",
     "מרשם","מרשם תרופות","רשימת תרופות","תרופות","תרופה","טיפול תרופתי",
     "טיפול","טיפול רגשי","טיפול פסיכולוגי","פסיכולוג","פסיכולוגית","טיפול נפשי",
-    "חיסון","חיסונים","תעודת התחסנות","פנקס חיסונים","כרטיס חיסונים","תעודת חיסונים",
+    "חיסון","חיסוני","תעודת התחסנות","פנקס חיסוני","כרטיס חיסוני","תעודת חיסוני",
     "אשפוז","אשפוז יום","מחלקה","בית חולים","ביתחולים","בי\"ח","ביה\"ח",
     "אישור מחלה","אישור מחלה לעבודה","אישור מחלה לבית ספר",
     "אישור רפואי","אישור כשירות","אישור כשירות רפואית",
@@ -452,38 +456,38 @@ const CATEGORY_KEYWORDS = {
     "תלוש שכר","תלוששכר","תלוש משכורת","תלושי שכר","תלושי משכורת","שעות נוספות","שעותנוספות","רשימת משמרות","משמרות",
     "שכר עבודה","שכר לשעה","שכר חודשי","טופס שעות","אישור תשלום",
     "הצהרת מעסיק","טופס למעסיק","אישור מעסיק","אישור העסקה לצורך ביטוח לאומי",
-    "מכתב פיטורים","מכתב סיום העסקה","הודעה מוקדמת","שימוע לפני פיטורים","פיטורים","פיטורין",
+    "מכתב פיטורין","מכתב סיום העסקה","הודעה מוקדמת","שימוע לפני פיטורין","פיטורין","פיטורין",
     "סיום העסקה","סיום יחסי עובד מעביד","יחסי עובד מעביד","עובד","מעסיק","מעסיקה",
     "הערכת עובד","הערכת ביצועים","דו\"ח ביצועים","חוות דעת מנהל","משוב עובד"
   ],
   "בית": [
     "חוזה שכירות","חוזהשכירות","הסכם שכירות","הסכםשכירות","שוכר","שוכרת","שוכרים","משכיר","משכירה","דירה",
     "נכס","נכס מגורים","כתובת מגורים","מגורים קבועים","עדכון כתובת","הצהרת מגורים",
-    "ועד בית","ועדבית","ועד בית חודשי","תשלום ועד בית","גביית ועד בית","ועד בניין",
+    "ועד בית","ועדבית","ועד בית חודשי","תשלום ועד בית","גביית ועד בית","ועד בנין",
     "חברת חשמל","חברת החשמל","חשמל","חשבון חשמל","קריאת מונה","מונה חשמל",
     "גז","חברת גז","קריאת מונה גז","מים","תאגיד מים","חשבון מים","מים חודשי",
-    "אינטרנט","ספק אינטרנט","ראוטר","נתב","חשבונית אינטרנט","הוט","יס","HOT","yes","סיבים","סיבים אופטיים",
-    "ארנונה","ארנונה מגורים","חוב ארנונה","דרישת תשלום ארנונה","ארנונה עירייה","עירייה",
+    "אינטרנט","ספק אינטרנט","ראוטר","נתב","חשבונית אינטרנט","הוט","יס","HOT","yes","סיגיב","סיגיב אופטייס",
+    "ארנונה","ארנונה מגורים","חוב ארנונה","הרשת תשלום ארנונה","ארנונה עירייה","עירייה",
     "גירושין","הסכם גירושין","צו גירושין","משמורת","צו משמורת","משמורת ילדים",
     "הסדרי ראייה","הסדרי ראיה","מזונות","דמי מזונות","תשלום מזונות","משפחה","משפחתי","הורה משמורן","הורה משמורנית"
   ],
   "אחריות": [
     "אחריות","אחריות למוצר","אחריות מוצר","אחריות יצרן","אחריות יבואן","אחריות יבואן רשמי",
     "אחריות יבואן מורשה","אחריות לשנה","אחריות לשנתיים","אחריות ל12 חודשים","אחריות ל-12 חודשים",
-    "אחריות ל24 חודשים","אחריות ל-24 חודשים","שנת אחריות","שנתיים אחריות","תום אחריות",
-    "תאריך אחריות","תום תקופת האחריות","סיומה של האחריות","פג תוקף אחריות","פג תוקף האחריות",
+    "אחריות ל24 חודשים","אחריות ל-24 חודשים","שנת אחריות","שנתיים אחריות","תוך אחריות",
+    "תאריך אחריות","תוך תקופת האחריות","סיומה של האחריות","פג תוקף אחריות","פג תוקף האחריות",
     "תעודת אחריות","ת.אחריות","ת. אחריות","תעודת-אחריות","כרטיס אחריות",
     "הוכחת קנייה","הוכחת קניה","אישור רכישה","חשבונית קנייה","תעודת משלוח","תעודת מסירה",
     "מספר סידורי","serial number","imei","rma","repair ticket","repair order"
   ],
   "תעודות": [
     "תעודת זהות","ת.ז","תז","תעודת לידה","ספח","ספח תעודת זהות","ספח ת.ז",
-    "רישיון נהיגה","רישיון רכב","דרכון","passport","דרכון ביומטרי",
-    "תעודת התחסנות","כרטיס חיסונים","אישור לימודים","אישור סטודנט","אישור תלמיד",
+    "רישיון נהיגה","רישיון רכב","הרכון","passport","הרכון ביומטרי",
+    "תעודת התחסנות","כרטיס חיסוני","אישור לימודים","אישור סטודנט","אישור תלמיד",
     "אישור מגורים","אישור כתובת","אישור תושבות"
   ],
   "עסק": [
-    "עוסק מורשה","עוסק פטור","תיק עוסק","חשבונית מס","דיווח מע\"מ","עוסק מורשה פעיל",
+    "עוסק מורשה","עוסק פטור","תיק עוסק","חשבונית מס","דיווח מע\"ם","עוסק מורשה פעיל",
     "חברה בע\"מ","ח.פ","מספר עוסק","הצעת מחיר","חשבונית ללקוח","ספק"
   ],
   "אחר": []
@@ -1526,32 +1530,24 @@ async function renderPending() {
   const wrap = pendingBox.querySelector("#sf_pending");
   wrap.innerHTML = "<div style='opacity:.7'>טוען הזמנות...</div>";
   
-  const myEmail = (allUsersData[userNow].email || userNow).toLowerCase();
+  const myEmail = normalizeEmail((allUsersData[userNow].email || userNow));
+  console.log("📩 Fetching pending invites for:", myEmail);
+  
   const invites = await getPendingInvitesFromFirestore(myEmail);
+  console.log("📩 Found", invites.length, "pending invites");
+  
   paintPending(invites);
-  wrap.innerHTML = "";
-  
-  if (!invites.length) {
-    wrap.innerHTML = `<div style="opacity:.7">אין בקשות ממתינות</div>`;
-    return;
-  }
-  
-  for (const inv of invites) {
-    const line = document.createElement("div");
-    line.className = "pending-row";
-    line.innerHTML = `
-      הזמנה לתיקייה "<b>${inv.folderName}</b>" מאת ${inv.fromEmail}
-      <div>
-        <button class="btn-min" data-accept="${inv.id}" data-folder="${inv.folderId}" data-fname="${inv.folderName}" data-owner="${inv.fromEmail}">אשר</button>
-        <button class="btn-min btn-danger" data-reject="${inv.id}">סרב</button>
-      </div>
-    `;
-    wrap.appendChild(line);
-  }
 }
 
   renderSharedFoldersList();
   renderPending();
+
+  // ===== הפעלציה של מקשיב זמן אמת להזמנות =====
+  if (stopWatching) stopWatching(); // ניקוי מקשיב קודם
+  stopWatching = watchPendingInvites(async (invites) => {
+    console.log("🔔 Real-time update: received", invites.length, "invites");
+    paintPending(invites);
+  });
 
   // ===== אירועים על רשימת התיקיות =====
   listWrap.addEventListener("click", (ev) => {
@@ -1620,7 +1616,7 @@ docsList.appendChild(docsBox);
         docsBox.appendChild(card);
       }
 
-      // לחצן הזמנה במסך פרטי התיקייה — אותה לוגיקה בדיוק
+      // לחצן הזמנה במסך פרטי התיקייה – אותה לוגיקה בדיוק
 membersBar.querySelector("#detail_inv_btn").addEventListener("click", async () => {
   const emailEl = membersBar.querySelector("#detail_inv_email");
   const targetEmail = (emailEl.value || "").trim().toLowerCase();
@@ -2013,7 +2009,7 @@ renderPending();
         // שמירת הקובץ עצמו ב-IndexedDB (לא ב-localStorage)
         await saveFileToDB(newId, fileDataBase64);
 
-        // נבנה אובייקט מסמך בלי לשמור את כל הבסיס64
+        // נבנה אובייקט מסמך בלי לשמור את כל הבייס64
         const newDoc = {
           id: newId,
           title: fileName,
@@ -2038,7 +2034,7 @@ renderPending();
 
   
 
-        // ניסוח הודעה נחמד לפי התיקייה
+        // ניסוח הודעה נחמה לפי התיקייה
 let niceCat = guessedCategory && guessedCategory.trim()
   ? guessedCategory.trim()
   : "התיקייה";
@@ -2104,6 +2100,3 @@ if (currentCat === "אחסון משותף") {
   // להתחיל בדף הבית
   renderHome();
 });
-
-
-
