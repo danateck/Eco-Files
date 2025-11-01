@@ -1,98 +1,49 @@
 // scriptLogin.js
-// לוגין שמתנהג גם כרישום אוטומטי אם אין משתמש
+// Cloud Firestore Version - All data stored in Firebase Firestore
 
-// --- ADD THIS near the top or above the class ---
-async function ensureUserDocInFirestore(email) {
-  try {
-    const db = firebase.firestore(); // v8 SDK already loaded on the page
-    const key = email.trim().toLowerCase();
-    await db.collection("users").doc(key).set(
-      {
-        email: key,
-        password: "",         // you don't store real passwords in Firestore
-        sharedFolders: {},
-        createdAt: Date.now()
-      },
-      { merge: true }         // merge so we don't clobber existing fields
-    );
-    console.log("✅ user doc ensured in Firestore:", key);
-  } catch (e) {
-    console.error("❌ failed to ensure user doc:", e);
-  }
-}
-
-
-const STORAGE_KEY = "docArchiveUsers";
-const CURRENT_USER_KEY = "docArchiveCurrentUser";
-
-function loadAllUsersDataFromStorage() {
+// Firestore Database functions
+async function loadUserDataFromFirestore(email) {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : {};
-    } catch {
-        return {};
+        const db = window.db;
+        const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+        
+        const userRef = doc(db, "users", email);
+        const snapshot = await getDoc(userRef);
+        
+        if (snapshot.exists()) {
+            return snapshot.data();
+        }
+        return null;
+    } catch (err) {
+        console.error("Error loading user data:", err);
+        return null;
     }
 }
 
-function saveAllUsersDataToStorage(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+async function saveUserDataToFirestore(email, userData) {
+    try {
+        const db = window.db;
+        const { doc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+        
+        const userRef = doc(db, "users", email);
+        await setDoc(userRef, userData, { merge: true });
+        return true;
+    } catch (err) {
+        console.error("Error saving user data:", err);
+        return false;
+    }
 }
 
-function setCurrentUser(username) {
-    localStorage.setItem(CURRENT_USER_KEY, username);
+async function setCurrentUser(email) {
+    // Store in sessionStorage only (not persistent across browser closes)
+    console.log("Setting current user:", email);
+    sessionStorage.setItem("docArchiveCurrentUser", email);
+    const verify = sessionStorage.getItem("docArchiveCurrentUser");
+    console.log("Verification - User stored in session:", verify);
 }
 
-// זו כבר לא בשימוש ישיר כרגע אבל אני עדיין משאירה לך, זה שימושי אם תרצי בעתיד דף "הרשמה"
-function registerUser(email, password) {
-    const allUsers = loadAllUsersDataFromStorage();
-
-    if (allUsers[email]) {
-        // אם כבר קיים לא נרשום מחדש בסיסמה אחרת
-        return { ok: false, msg: "המייל כבר רשום. התחברי עם הסיסמה שלו." };
-    }
-
-    allUsers[email] = {
-        password: password,
-        docs: [] // משתמש חדש מתחיל בלי מסמכים
-    };
-    saveAllUsersDataToStorage(allUsers);
-    setCurrentUser(email);
-
-    return { ok: true, msg: "נרשמת והתחברת." };
-}
-
-// התחברות שיכולה גם ליצור משתמש אם הוא לא קיים עדיין
-function loginUser(email, password) {
-    const allUsers = loadAllUsersDataFromStorage();
-    const existingUser = allUsers[email];
-
-    // --- מצב 1: אין בכלל משתמש כזה עדיין ---
-    if (!existingUser) {
-        // יוצרים משתמש חדש "מהאוויר" עם הסיסמה שהוזנה עכשיו
-        allUsers[email] = {
-            password: password,
-            docs: [] // אין לו עדיין קבצים
-        };
-        saveAllUsersDataToStorage(allUsers);
-
-        setCurrentUser(email);
-        return { ok: true, code: "NEW_USER_CREATED", msg: "נוצר משתמש חדש והתחברת" };
-    }
-
-    // --- מצב 2: יש משתמש קיים אבל הוא נוצר דרך גוגל (בלי סיסמה לוקאלית) ---
-    if (!existingUser.password) {
-        // אם אין password שמור אצלו, זה חשבון Google בלבד
-        return { ok: false, code: "GOOGLE_ONLY", msg: "החשבון הזה נכנס רק עם Google." };
-    }
-
-    // --- מצב 3: יש משתמש קיים עם סיסמה ואנחנו בודקות התאמה ---
-    if (existingUser.password !== password) {
-        return { ok: false, code: "BADPASS", msg: "סיסמה שגויה" };
-    }
-
-    // --- מצב 4: סיסמה טובה ---
-    setCurrentUser(email);
-    return { ok: true, code: "OK", msg: "מחוברת" };
+async function getCurrentUser() {
+    return sessionStorage.getItem("docArchiveCurrentUser");
 }
 
 class EcoWellnessLoginForm {
@@ -107,15 +58,20 @@ class EcoWellnessLoginForm {
         this.socialButtons = document.querySelectorAll('.earth-social');
         this.forgotLink = document.querySelector(".healing-link");
 
-        // Firebase (לגוגל)
+        // Firebase
         this.auth = null;
+        this.db = null;
         this.googleProvider = null;
-        this._signInWithPopup = null;
+        this.signInWithEmailAndPassword = null;
+        this.createUserWithEmailAndPassword = null;
+        this.signInWithPopup = null;
+        this.sendPasswordResetEmail = null;
 
         this.init();
     }
 
-    init() {
+    async init() {
+        await this.initFirebase();
         this.bindEvents();
         this.setupPasswordToggle();
         this.setupWellnessEffects();
@@ -123,17 +79,65 @@ class EcoWellnessLoginForm {
         this.setupForgotPassword();
     }
 
+    async initFirebase() {
+        try {
+            const [appModule, authModule, firestoreModule] = await Promise.all([
+                import("https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js"),
+                import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
+                import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js")
+            ]);
+
+            const { initializeApp } = appModule;
+            const { 
+                getAuth, 
+                GoogleAuthProvider, 
+                signInWithPopup,
+                signInWithEmailAndPassword,
+                createUserWithEmailAndPassword,
+                sendPasswordResetEmail
+            } = authModule;
+            const { getFirestore } = firestoreModule;
+
+            const firebaseConfig = {
+                apiKey: "AIzaSyBPr4X2_8JYCgXzMlTcVB0EJLhup9CdyYw",
+                authDomain: "login-page-echo-file.firebaseapp.com",
+                projectId: "login-page-echo-file",
+                storageBucket: "login-page-echo-file.firebasestorage.app",
+                messagingSenderId: "200723524735",
+                appId: "1:200723524735:web:9eaed6ef10cbc2c406234a",
+                measurementId: "G-LT5XQFQPKP"
+            };
+
+            const firebaseApp = initializeApp(firebaseConfig);
+            this.auth = getAuth(firebaseApp);
+            this.db = getFirestore(firebaseApp);
+            this.googleProvider = new GoogleAuthProvider();
+            
+            // Store auth functions
+            this.signInWithPopup = signInWithPopup;
+            this.signInWithEmailAndPassword = signInWithEmailAndPassword;
+            this.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+            this.sendPasswordResetEmail = sendPasswordResetEmail;
+
+            // Make auth and db globally available
+            window.auth = this.auth;
+            window.db = this.db;
+
+            console.log("Firebase initialized successfully");
+        } catch (err) {
+            console.error("Firebase initialization error:", err);
+            alert("שגיאה באתחול המערכת. אנא רענני את הדף.");
+        }
+    }
+
     bindEvents() {
-        // כשלוחצים התחברות
         this.form.addEventListener('submit', (e) => this.handleSubmit(e));
 
-        // ולידציה בסיסית
         this.emailInput.addEventListener('blur', () => this.validateEmail());
         this.passwordInput.addEventListener('blur', () => this.validatePassword());
         this.emailInput.addEventListener('input', () => this.clearError('email'));
         this.passwordInput.addEventListener('input', () => this.clearError('password'));
 
-        // כדי שהלייבלים לא יתנגשו
         this.emailInput.setAttribute('placeholder', ' ');
         this.passwordInput.setAttribute('placeholder', ' ');
     }
@@ -150,15 +154,14 @@ class EcoWellnessLoginForm {
     setupForgotPassword() {
         if (!this.forgotLink) return;
 
-        this.forgotLink.addEventListener("click", (e) => {
+        this.forgotLink.addEventListener("click", async (e) => {
             e.preventDefault();
-            this.handleForgotPassword();
+            await this.handleForgotPassword();
         });
     }
 
-    handleForgotPassword() {
+    async handleForgotPassword() {
         const email = this.emailInput.value.trim();
-        const allUsers = loadAllUsersDataFromStorage();
 
         if (!email) {
             alert("כדי לאפס סיסמה, הזיני קודם את כתובת האימייל שלך.");
@@ -166,73 +169,17 @@ class EcoWellnessLoginForm {
             return;
         }
 
-        const userData = allUsers[email];
-
-        if (!userData) {
-            // עכשיו בגלל שאנחנו מרשות יצירה אוטומטית בלוגין,
-            // זה מצב די מוזר אבל עדיין נטפל בו יפה:
-            alert("אין חשבון עם האימייל הזה עדיין. תתחברי פעם ראשונה וזה ייצור חשבון.");
-            return;
-        }
-
-        // חשבון של גוגל בלבד (אין סיסמה מקומית לשנות)
-        if (!userData.password) {
-            alert("החשבון הזה נכנס רק עם Google.");
-            return;
-        }
-
-        // איפוס סיסמה רגיל לחלון modal
-        localStorage.setItem("pendingResetUser", email);
-        this.openResetModal();
-    }
-
-    openResetModal() {
-        const modal = document.getElementById("resetModal");
-        const newPassInput = document.getElementById("newPasswordInput");
-        const cancelBtn = document.getElementById("resetCancelBtn");
-        const saveBtn = document.getElementById("resetSaveBtn");
-
-        if (!modal) {
-            alert("שגיאה: חלון איפוס לא זמין.");
-            return;
-        }
-
-        modal.classList.remove("hidden");
-        newPassInput.value = "";
-        newPassInput.focus();
-
-        cancelBtn.onclick = () => {
-            modal.classList.add("hidden");
-            localStorage.removeItem("pendingResetUser");
-        };
-
-        saveBtn.onclick = () => {
-            const newPass = newPassInput.value.trim();
-            if (!newPass || newPass.length < 3) {
-                alert("הסיסמה החדשה חייבת להיות לפחות באורך 3 תווים.");
-                return;
+        try {
+            await this.sendPasswordResetEmail(this.auth, email);
+            alert("נשלח אליך מייל לאיפוס סיסמה. בדקי את תיבת הדואר שלך.");
+        } catch (err) {
+            console.error("Password reset error:", err);
+            if (err.code === "auth/user-not-found") {
+                alert("לא נמצא משתמש עם כתובת המייל הזו.");
+            } else {
+                alert("שגיאה בשליחת מייל לאיפוס סיסמה. נסי שוב מאוחר יותר.");
             }
-
-            const emailToReset = localStorage.getItem("pendingResetUser");
-            if (!emailToReset) {
-                alert("שגיאה פנימית: לא ידוע איזה משתמש לאפס.");
-                return;
-            }
-
-            const allUsers = loadAllUsersDataFromStorage();
-            if (!allUsers[emailToReset]) {
-                alert("שגיאה: המשתמש כבר לא קיים.");
-                return;
-            }
-
-            allUsers[emailToReset].password = newPass;
-            saveAllUsersDataToStorage(allUsers);
-
-            localStorage.removeItem("pendingResetUser");
-            modal.classList.add("hidden");
-
-            alert("הסיסמה עודכנה. עכשיו אפשר להתחבר עם הסיסמה החדשה.");
-        };
+        }
     }
 
     setupWellnessEffects() {
@@ -283,8 +230,8 @@ class EcoWellnessLoginForm {
             this.showError('password', 'נא להזין סיסמה');
             return false;
         }
-        if (password.length < 3) {
-            this.showError('password', 'הסיסמה קצרה מדי (לפחות 3 תווים)');
+        if (password.length < 6) {
+            this.showError('password', 'הסיסמה קצרה מדי (לפחות 6 תווים)');
             return false;
         }
 
@@ -326,165 +273,179 @@ class EcoWellnessLoginForm {
     }
 
     async handleSubmit(e) {
-    e.preventDefault();
+        e.preventDefault();
 
-    const okEmail = this.validateEmail();
-    const okPass = this.validatePassword();
-    if (!okEmail || !okPass) return;
+        const okEmail = this.validateEmail();
+        const okPass = this.validatePassword();
+        if (!okEmail || !okPass) return;
 
-    this.setLoading(true);
+        this.setLoading(true);
 
-    const email = this.emailInput.value.trim();
-    const password = this.passwordInput.value.trim();
+        const email = this.emailInput.value.trim();
+        const password = this.passwordInput.value.trim();
 
-    try {
-        // 1) נסה להתחבר למשתמש קיים
-        const userCred = await window.auth.signInWithEmailAndPassword(email, password);
+        console.log("=== LOGIN ATTEMPT ===");
+        console.log("Email:", email);
 
-        // הצלחה -> תמשיכי פנימה
-        this.finishLocalLogin(email);
+        try {
+            // Try to sign in
+            console.log("Attempting signInWithEmailAndPassword...");
+            const userCred = await this.signInWithEmailAndPassword(this.auth, email, password);
+            console.log("Sign in successful:", userCred);
+            await this.finishLogin(email);
 
-    } catch (err) {
-        const code = err.code || "";
-        const msg = err.message || "";
+        } catch (err) {
+            const code = err.code || "";
+            const msg = err.message || "";
 
-        // 1. existing email, wrong password
-        if (code === "auth/wrong-password") {
-            this.showError("password", "סיסמה שגויה");
-            this.passwordInput.focus();
-            this.setLoading(false);
-            return;
-        }
+            console.log("Login error code:", code);
+            console.log("Login error message:", msg);
 
-        // 2. email never registered yet -> create user automatically
-        if (code === "auth/user-not-found") {
-            try {
-                const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
-                this.finishLocalLogin(email);
-            } catch (createErr) {
-                // could fail if weak password (<6 chars), etc.
-                console.error("create user failed:", createErr);
-                this.showError("password", "לא ניתן ליצור משתמש חדש כרגע (בדקי סיסמה באורך 6+).");
+            // Wrong password
+            if (code === "auth/wrong-password") {
+                this.showError("password", "סיסמה שגויה");
+                this.passwordInput.focus();
                 this.setLoading(false);
+                return;
             }
-            return;
-        }
 
-        // 3. Safari / mobile sometimes returns auth/internal-error with "INVALID_LOGIN_CREDENTIALS"
-        // instead of giving us a clean code. That can mean two DIFFERENT things:
-        //   a) the account doesn't exist yet (treat like create)
-        //   b) the account exists but password is wrong (treat like wrong password)
-        //
-        // Trick: try to create. If createUser fails with "auth/email-already-in-use",
-        // that means the user DOES exist -> so it's actually wrong password.
-        if (
-            code === "auth/internal-error" &&
-            msg.includes("INVALID_LOGIN_CREDENTIALS")
-        ) {
-            try {
-                const newUserCred = await window.auth.createUserWithEmailAndPassword(email, password);
-                // if we got here, user didn't exist before. now they're created:
-                this.finishLocalLogin(email);
-            } catch (createErr) {
-                const createCode = createErr.code || "";
-                // user already exists but password didn't match
-                if (createCode === "auth/email-already-in-use") {
-                    this.showError("password", "סיסמה שגויה");
-                    this.passwordInput.focus();
+            // User not found - create new user
+            if (code === "auth/user-not-found") {
+                try {
+                    console.log("User not found, creating new user...");
+                    const newUserCred = await this.createUserWithEmailAndPassword(this.auth, email, password);
+                    console.log("New user created:", newUserCred);
+                    await this.finishLogin(email, true);
+                    return;
+                } catch (createErr) {
+                    console.error("Create user failed:", createErr);
+                    this.showError("password", "לא ניתן ליצור משתמש חדש. בדקי שהסיסמה באורך 6+ תווים.");
                     this.setLoading(false);
-                } else {
-                    console.error("create user failed (internal-error path):", createErr);
-                    this.showError("password", "לא ניתן ליצור משתמש חדש כרגע.");
-                    this.setLoading(false);
+                    return;
                 }
             }
-            return;
-        }
 
-        // 4. fallback:
-        // sometimes iPhone gives weird auth persistence errors even if the
-        // credentials are correct. as a last resort, if we reached here,
-        // we will try to continue as logged in anyway.
-        console.error("login failed (fallback):", err);
-        // try to continue anyway:
-        this.finishLocalLogin(email);
+            // Safari/mobile internal error
+            if (code === "auth/internal-error" && msg.includes("INVALID_LOGIN_CREDENTIALS")) {
+                try {
+                    console.log("Internal error, trying to create user...");
+                    const newUserCred = await this.createUserWithEmailAndPassword(this.auth, email, password);
+                    console.log("New user created:", newUserCred);
+                    await this.finishLogin(email, true);
+                    return;
+                } catch (createErr) {
+                    const createCode = createErr.code || "";
+                    if (createCode === "auth/email-already-in-use") {
+                        this.showError("password", "סיסמה שגויה");
+                        this.passwordInput.focus();
+                        this.setLoading(false);
+                    } else {
+                        console.error("Create user failed:", createErr);
+                        this.showError("password", "לא ניתן ליצור משתמש חדש.");
+                        this.setLoading(false);
+                    }
+                    return;
+                }
+            }
+
+            // Invalid credentials (Firebase v9+ returns this instead of user-not-found sometimes)
+            if (code === "auth/invalid-credential") {
+                try {
+                    console.log("Invalid credentials, trying to create user...");
+                    const newUserCred = await this.createUserWithEmailAndPassword(this.auth, email, password);
+                    console.log("New user created:", newUserCred);
+                    await this.finishLogin(email, true);
+                    return;
+                } catch (createErr) {
+                    const createCode = createErr.code || "";
+                    if (createCode === "auth/email-already-in-use") {
+                        this.showError("password", "סיסמה שגויה");
+                        this.passwordInput.focus();
+                        this.setLoading(false);
+                    } else {
+                        console.error("Create user failed:", createErr);
+                        this.showError("password", "לא ניתן ליצור משתמש חדש.");
+                        this.setLoading(false);
+                    }
+                    return;
+                }
+            }
+
+            // Fallback
+            console.error("Login failed (unknown error):", err);
+            this.showError("password", "שגיאה בהתחברות. אנא נסי שוב.");
+            this.setLoading(false);
+        }
     }
 
+    async finishLogin(email, isNewUser = false) {
+        try {
+            console.log("=== FINISH LOGIN START ===");
+            console.log("Email:", email);
+            console.log("Is new user:", isNewUser);
+            
+            // Set current user in session
+            await setCurrentUser(email);
+            
+            // Verify it was set
+            const storedUser = sessionStorage.getItem("docArchiveCurrentUser");
+            console.log("Stored user after setCurrentUser:", storedUser);
+            
+            // Set a flag to indicate successful login
+            sessionStorage.setItem("loginSuccess", "true");
+            console.log("loginSuccess flag set");
 
-}
+            // Check if user data exists in Firestore
+            console.log("Loading user data from Firestore...");
+            let userData = await loadUserDataFromFirestore(email);
+            console.log("User data loaded:", userData);
 
+            // If new user or no data exists, create initial data structure
+            if (!userData) {
+                console.log("Creating new user data in Firestore");
+                userData = {
+                    email: email,
+                    docs: [],
+                    createdAt: new Date().toISOString()
+                };
+                const saveResult = await saveUserDataToFirestore(email, userData);
+                console.log("User data save result:", saveResult);
+            }
 
+            console.log("Calling showHarmonySuccess...");
+            this.showHarmonySuccess();
 
-finishLocalLogin(email) {
-  // 1) remember who is logged in
-  localStorage.setItem("docArchiveCurrentUser", email);
-
-  // 2) ensure local container exists
-  const STORAGE_KEY = "docArchiveUsers";
-  const raw = localStorage.getItem(STORAGE_KEY);
-  const allUsers = raw ? JSON.parse(raw) : {};
-  if (!allUsers[email]) {
-    allUsers[email] = { password: "", docs: [] };
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(allUsers));
-
-  // 2.5) 🔴 NEW: also ensure a Firestore user doc exists on THIS device
-  ensureUserDocInFirestore(email);   // <-- add this line
-
-  // 3) success animation + 4) redirect
-  this.showHarmonySuccess();
-  setTimeout(() => { window.location.href = "../../index.html"; }, 1500);
-}
-
-
-
-
+            console.log("Setting timeout for redirect...");
+            setTimeout(() => {
+                console.log("=== REDIRECTING NOW ===");
+                console.log("Current URL:", window.location.href);
+                
+                // Path from forms/eco-wellness/login.html to project/index.html
+                const redirectPath = "../../index.html";
+                console.log("Redirecting to:", redirectPath);
+                
+                window.location.replace(redirectPath);
+            }, 1500);
+        } catch (err) {
+            console.error("=== ERROR IN FINISH LOGIN ===");
+            console.error("Error details:", err);
+            this.setLoading(false);
+            alert("שגיאה בהתחברות. אנא נסי שוב.");
+        }
+    }
 
     showHarmonySuccess() {
-        // מיני-אנימציה
         this.form.style.transform = 'scale(0.95)';
         this.form.style.opacity = '0';
 
-
-        
         setTimeout(() => {
             this.form.style.display = 'none';
             document
-              .querySelectorAll('.natural-social, .nurture-signup, .balance-divider')
-              .forEach(el => el?.classList.add('hidden'));
+                .querySelectorAll('.natural-social, .nurture-signup, .balance-divider')
+                .forEach(el => el?.classList.add('hidden'));
 
             this.successMessage.classList.add('show');
         }, 300);
-    }
-
-
-
-
-    /* ---------------- Google Login ---------------- */
-
-    initFirebaseAuth() {
-        return Promise.all([
-            import("https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js"),
-            import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js")
-        ]).then(([appModule, authModule]) => {
-            const { initializeApp } = appModule;
-            const { getAuth, GoogleAuthProvider, signInWithPopup } = authModule;
-
-            const firebaseConfig = {
-                apiKey: "AIzaSyBPr4X2_8JYCgXzMlTcVB0EJLhup9CdyYw",
-                authDomain: "login-page-echo-file.firebaseapp.com",
-                projectId: "login-page-echo-file",
-                storageBucket: "login-page-echo-file.firebasestorage.app",
-                messagingSenderId: "200723524735",
-                appId: "1:200723524735:web:9eaed6ef10cbc2c406234a",
-                measurementId: "G-LT5XQFQPKP"
-            };
-
-            const firebaseApp = initializeApp(firebaseConfig);
-            this.auth = getAuth(firebaseApp);
-            this.googleProvider = new GoogleAuthProvider();
-            this._signInWithPopup = signInWithPopup;
-        });
     }
 
     setupGoogleButton() {
@@ -492,31 +453,34 @@ finishLocalLogin(email) {
         if (!googleBtn) return;
 
         googleBtn.addEventListener("click", async () => {
-            if (!this.auth) {
-                await this.initFirebaseAuth();
-            }
-
             try {
                 this.setLoading(true);
 
-                const result = await this._signInWithPopup(this.auth, this.googleProvider);
+                const result = await this.signInWithPopup(this.auth, this.googleProvider);
                 const user = result.user;
 
-                // לשמור/לעדכן את המשתמש אצלנו
-                const allUsers = loadAllUsersDataFromStorage();
-                if (!allUsers[user.email]) {
-                    allUsers[user.email] = {
-                        password: "", // אין סיסמה מקומית לחשבון גוגל
-                        docs: []
+                // Check if user data exists in Firestore
+                let userData = await loadUserDataFromFirestore(user.email);
+
+                // Create user data if doesn't exist
+                if (!userData) {
+                    userData = {
+                        email: user.email,
+                        displayName: user.displayName || "",
+                        photoURL: user.photoURL || "",
+                        docs: [],
+                        createdAt: new Date().toISOString(),
+                        loginMethod: "google"
                     };
-                    saveAllUsersDataToStorage(allUsers);
+                    await saveUserDataToFirestore(user.email, userData);
                 }
 
-                setCurrentUser(user.email);
+                await setCurrentUser(user.email);
 
                 this.showHarmonySuccess();
                 setTimeout(() => {
-                    window.location.href = "../../index.html";
+                    console.log("Google login redirect to: ../../index.html");
+                    window.location.replace("../../index.html");
                 }, 1500);
 
             } catch (err) {
@@ -529,7 +493,7 @@ finishLocalLogin(email) {
     }
 }
 
-// אנימציה נשימה לשדות
+// Animation keyframes
 if (!document.querySelector('#wellness-keyframes')) {
     const style = document.createElement('style');
     style.id = 'wellness-keyframes';
@@ -542,7 +506,7 @@ if (!document.querySelector('#wellness-keyframes')) {
     document.head.appendChild(style);
 }
 
-// הפעלה
+// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     new EcoWellnessLoginForm();
 });

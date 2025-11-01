@@ -6,6 +6,7 @@
   <title>EcoDocs Dashboard</title>
 
 
+<script src="forms/eco-wellness/authCheck.js"></script>
   
   <!-- פונט -->
   <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -950,13 +951,6 @@ element.style {
 
 
 
-  <script>
-    // אם אין יוזר מחובר - נזרוק להתחברות
-    const currentUser = localStorage.getItem("docArchiveCurrentUser");
-    if (!currentUser) {
-      window.location.href = "./forms/eco-wellness/index.html";
-    }
-  </script>
 
   <div class="dashboard">
     <!-- ===== SIDEBAR ===== -->
@@ -1228,7 +1222,7 @@ element.style {
     // שם משתמש בפינה
     const label = document.getElementById("currentUserLabel");
     const mail = document.getElementById("currentUserEmail");
-    const currentUserShown = localStorage.getItem("docArchiveCurrentUser");
+    const currentUserShown = sessionStorage.getItem("docArchiveCurrentUser");
     if (label) label.textContent = `שלום, ${currentUserShown}`;
     if (mail) mail.textContent = currentUserShown;
 
@@ -1236,14 +1230,16 @@ element.style {
     const logoutBtn = document.getElementById("logoutBtn");
     if (logoutBtn) {
       logoutBtn.addEventListener("click", () => {
-        localStorage.removeItem("docArchiveCurrentUser");
+        sessionStorage.removeItem("docArchiveCurrentUser");
+        sessionStorage.removeItem("loginSuccess");
         window.location.href = "./forms/eco-wellness/index.html";
       });
     }
     const mobileLogoutBtn = document.getElementById("mobileLogoutBtn");
     if (mobileLogoutBtn) {
       mobileLogoutBtn.addEventListener("click", () => {
-        localStorage.removeItem("docArchiveCurrentUser");
+        sessionStorage.removeItem("docArchiveCurrentUser");
+        sessionStorage.removeItem("loginSuccess");
         window.location.href = "./forms/eco-wellness/index.html";
       });
     }
@@ -1290,7 +1286,14 @@ element.style {
     });
   </script>
 
-
+<script>
+        // Add this at the bottom
+        // Require user to be logged in to view this page
+        requireLogin();
+        
+        // Now you can get the logged in user
+        
+    </script>
 
 <!-- Import map for bare imports used by firebase-config.js -->
 <script type="importmap">

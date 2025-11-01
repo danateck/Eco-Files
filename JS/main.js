@@ -193,7 +193,7 @@ window.syncAllUsers = async function() {
 // הוסף פונקציה זו איפשהו בקוד
 async function syncAllLocalUsersToFirestore() {
   if (!isFirebaseAvailable()) {
-    showNotification("Firebase לא זמין", true);
+    //showNotification("Firebase לא זמין", true);
     return;
   }
   
