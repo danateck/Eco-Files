@@ -1,6 +1,6 @@
 // firebase-config.js
 import { initializeApp } from "firebase/app";
-import { getFirestore, initializeFirestore, collection, addDoc, getDoc, getDocs, doc, query, where, updateDoc, setDoc, arrayUnion } from "firebase/firestore";
+import { getFirestore, initializeFirestore, collection, addDoc, getDoc, getDocs, doc, query, where, updateDoc, setDoc, arrayUnion, onSnapshot   } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBPr4X2_8JYCgXzMlTcVB0EJLhup9CdyYw",
@@ -31,7 +31,7 @@ window.fs = {
   where,
   updateDoc,
   setDoc,
-  arrayUnion
+  arrayUnion, onSnapshot  
 };
 
 console.log("✅ Firestore connected with long polling");

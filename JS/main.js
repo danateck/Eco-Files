@@ -513,7 +513,7 @@ const CURRENT_USER_KEY = "docArchiveCurrentUser";
 
 function loadAllUsersDataFromStorage() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     return JSON.parse(raw);
   } catch (e) {
@@ -523,11 +523,11 @@ function loadAllUsersDataFromStorage() {
 }
 
 function saveAllUsersDataToStorage(allUsersData) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(allUsersData));
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(allUsersData));
 }
 
 function getCurrentUser() {
-  return localStorage.getItem(CURRENT_USER_KEY);
+  return sessionStorage.getItem(CURRENT_USER_KEY);
 }
 
 function getUserDocs(username, allUsersData) {
@@ -1009,7 +1009,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!currentUser) {
     // אם אין משתמש שמור, אפשר פשוט לבחור "ברירת מחדל"
     // או להפנות למסך התחברות אם יש לך אחד
-    localStorage.setItem(CURRENT_USER_KEY, "defaultUser");
+    sessionStorage.setItem(CURRENT_USER_KEY, "defaultUser");
   }
 
   const userNow = getCurrentUser() || "defaultUser";
