@@ -1,6 +1,32 @@
 // main.js - גרסה עם IndexedDB לשמירת קבצים גדולים בצורה יציבה
 
 
+document.getElementById("closeMenuBtn")?.addEventListener("click", () => {
+  // change '.sidebar' to your actual drawer element selector if different
+  document.querySelector(".sidebar")?.classList.remove("open");
+});
+
+
+
+const sidebar = document.querySelector(".sidebar");
+const openBtn = document.getElementById("openMenuBtn");  // your button that opens the menu
+const closeBtn = document.getElementById("closeMenuBtn"); // the ✕ button inside the menu
+
+openBtn?.addEventListener("click", () => {
+  sidebar.classList.add("open");
+});
+
+closeBtn?.addEventListener("click", () => {
+  sidebar.classList.remove("open");
+});
+
+
+document.getElementById("premiumBtn")?.addEventListener("click", () => {
+  document.getElementById("premiumPanel")?.classList.remove("hidden");
+});
+
+
+
 
 
 /*************************
@@ -21,6 +47,9 @@ window.isFirebaseAvailable = function() {
     return false;
   }
 };
+
+
+
 
 
 
@@ -1141,6 +1170,60 @@ function ensureUserSharedFields(allUsersData, username) {
  *********************/
 
 document.addEventListener("DOMContentLoaded", async () => {
+
+
+  const panel = document.getElementById("premiumPanel");
+  const modal = panel?.querySelector(".modal");
+  const btnOpen = document.getElementById("premiumBtn");
+  const btnClose = document.getElementById("premiumCloseBtn");
+  const btnLater = document.getElementById("premiumLaterBtn");
+
+  function openPremiumPanel() {
+    panel?.classList.remove("hidden");
+    panel?.setAttribute("aria-hidden", "false");
+    document.documentElement.style.overflow = "hidden"; // lock page scroll
+    modal?.focus();
+  }
+
+
+  function closePremiumPanel() {
+    panel?.classList.add("hidden");
+    panel?.setAttribute("aria-hidden", "true");
+    document.documentElement.style.overflow = ""; // restore page scroll
+    btnOpen?.focus();
+  }
+
+  // open from top-right button
+  btnOpen?.addEventListener("click", openPremiumPanel);
+
+  // close actions
+  btnClose?.addEventListener("click", closePremiumPanel);
+  btnLater?.addEventListener("click", closePremiumPanel);
+
+  // click outside modal to close
+  panel?.addEventListener("click", (e) => {
+    if (e.target === panel) closePremiumPanel();
+  });
+
+  // ESC to close
+  panel?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closePremiumPanel();
+  });
+
+  // plan selection (hook to payments / Firestore later)
+  panel?.querySelectorAll("[data-select-plan]").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      const plan = e.currentTarget.getAttribute("data-select-plan"); // "pro" | "premium"
+      // TODO: integrate checkout and/or Firestore update here:
+      // await setDoc(doc(db, "users", userEmail), { plan }, { merge: true });
+      alert("נבחרה תוכנית: " + (plan === "pro" ? "פרו" : "פרימיום"));
+      closePremiumPanel();
+    });
+  });
+
+
+
+
   const currentUser   = getCurrentUser();
   if (!currentUser) {
     // אם אין משתמש שמור, אפשר פשוט לבחור "ברירת מחדל"

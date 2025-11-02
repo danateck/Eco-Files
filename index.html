@@ -112,7 +112,14 @@
     /* מובייל: המגירה */
     @media (max-width: 760px) {
       .sidebar {
-        position: fixed;
+             position: fixed;
+  top: 0;
+  right: 0; /* slide in/out from the right side */
+      box-shadow: 4px 0 16px rgba(0,0,0,0.3);
+      padding: 1rem 1rem 0;
+      overflow-y: auto; /* גלילה אם התוכן גבוה */
+      transform: translateX(100%); /* start off-screen to the right */
+  transition: transform 0.35s ease-in-out;
         top: 0;
         right: 0;
         height: 100vh;
@@ -179,6 +186,72 @@
       unicode-bidi: plaintext;
       word-break: break-all;
     }
+
+
+
+    .hidden { display: none !important; }
+
+/* Backdrop allows scroll on small screens */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 9999;
+  overflow: auto;
+  padding: 16px;
+  min-height: 100dvh;
+}
+.modal {
+  background: var(--c-bg,#fff);
+  color: var(--c-fg,#0f141a);
+  width: min(720px, 94vw);
+  margin: 24px auto;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.28);
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  max-height: 88dvh;
+  overflow: hidden;
+}
+.modal-head {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 16px; position:sticky; top:0; background:var(--c-bg,#fff);
+  border-bottom:1px solid var(--c-border,#e6e6e6); z-index:1;
+}
+.modal-head h2{margin:0;font-size:1.2rem}
+.modal-close{border:0;background:transparent;cursor:pointer;font-size:1.1rem;color:var(--c-fg,#0f141a)}
+.scroll-area{overflow:auto;-webkit-overflow-scrolling:touch;padding:10px 16px; margin-right: 20px;}
+.modal-foot{padding:10px 16px 14px;border-top:1px solid var(--c-border,#e6e6e6);position:sticky;bottom:0;background:var(--c-bg,#fff)}
+
+.section{margin:10px 0 16px}
+.section h3{margin:0 0 8px;font-size:1rem;opacity:.9}
+.row{display:flex;align-items:center;gap:10px;margin:10px 0}
+.switch input{margin-inline-end:8px}
+
+select, .btn{
+  padding:8px 12px;border-radius:10px;border:1px solid var(--c-border,#e6e6e6);
+  background:var(--c-btn,#f2f2f2); color:var(--c-fg,#0f141a);
+}
+.btn{cursor:pointer}
+
+/* Compact density: you can hook your cards/list to this class */
+.compact-density .doc-card{padding:8px !important}
+.compact-density .grid{gap:8px !important}
+
+/* Reduce motion */
+.reduce-motion *{animation:none!important;transition:none!important}
+
+/* Theme tokens (light default) + dark */
+:root{
+  --c-bg:#ffffff; --c-fg:#0f141a; --c-border:#e6e6e6; --c-btn:#f2f2f2;
+}
+.theme-dark{
+  --c-bg:#111417; --c-fg:#e8eef5; --c-border:#2a2f35; --c-btn:#1d232a;
+}
+
+/* Mobile */
+@media (max-width:560px){
+  .modal{width:100%;margin:0 auto;max-height:100dvh;border-radius:0}
+}
 
     nav.menu {
       display: flex;
@@ -531,6 +604,223 @@
       background: #222;
       color: #ffffff;
     }
+
+
+
+/* header row: title on right, X on left (works great in RTL, too) */
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* pushes title to right, X to left */
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #ddd;
+}
+
+.brand-name {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* the X button */
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #555;
+  padding: 4px 6px;
+  border-radius: 10px;
+  transition: background-color .15s ease, color .15s ease;
+}
+.close-btn:hover { background: rgba(0,0,0,0.06); color: #e53935; }
+
+/* optional dark mode variants */
+body.dark-mode .brand-row { border-bottom-color: #2b2b2b; }
+body.dark-mode .close-btn { color: #eee; }
+body.dark-mode .close-btn:hover { background: rgba(255,255,255,0.06); color: #ff7675; }
+
+
+/* when menu is open */
+.sidebar.open {
+  transform: translateX(0); /* slide into view */
+}
+
+/* optional dark mode support */
+body.dark-mode .sidebar {
+  background: #181a1b;
+  color: #eee;
+}
+
+
+
+
+
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.premium-btn {
+  background: linear-gradient(90deg, #bdc3bf, #bdc3bf);
+  border: none;
+  color: #1e1e1e;
+  font-weight: bold;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.premium-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(54, 49, 24, 0.6);
+}
+
+/* ========== Responsive, scrollable modal ========== */
+.hidden { display: none !important; }
+
+/* Backdrop now scrolls if needed and pads content */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 9999;
+
+  /* allow scroll on small screens */
+  overflow: auto;
+  padding: 16px;                 /* space around modal on tiny screens */
+  /* use modern viewport to avoid mobile address bar bugs */
+  min-height: 100dvh;            
+}
+
+/* Center via auto margins; cap height and allow inner scrolling */
+.modal {
+  background: var(--c-bg, #fff);
+  color: var(--c-fg, #0f141a);
+  width: min(920px, 94vw);
+  margin: 24px auto;             /* centers in the scrolling backdrop */
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.28);
+
+  display: grid;
+  grid-template-rows: auto 1fr auto; /* head | content | foot */
+  gap: 12px;
+
+  max-height: 88dvh;             /* so it never overflows the screen */
+  overflow: hidden;              /* clip at container; content area scrolls */
+}
+
+/* Keep header/close visible while content scrolls */
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  position: sticky; top: 0;
+  background: var(--c-bg, #fff);
+  z-index: 1;
+  border-bottom: 1px solid var(--c-border, #e6e6e6);
+}
+.modal-head h2 { margin: 0; font-size: 1.2rem; }
+.modal-close {
+  border: 0; background: transparent; cursor: pointer; font-size: 1.1rem;
+  color: var(--c-fg, #0f141a);
+}
+
+/* Scroll only the middle content area (text + plans) */
+.modal > .muted,
+.modal > .plans-grid {
+  padding: 0 16px;
+}
+.muted { opacity: .85; margin: 8px 0 10px; margin-right: 12px}
+
+/* Wrap content to be scrollable (1fr area) */
+.modal .scroll-area {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 10px;
+}
+
+/* Plans grid responsive */
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 0 16px 6px;
+}
+.plan {
+  border: 1px solid var(--c-border, #e6e6e6);
+  background: var(--c-card, #f9f9f9);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid; gap: 10px;
+}
+.plan header { display: flex; align-items: baseline; justify-content: space-between; }
+.plan h3 { margin: 0; }
+.price { font-size: 1.15rem; font-weight: 700; }
+.price .per { font-size: .9rem; opacity: .7; margin-inline-start: 4px; }
+.features { margin: 0; padding-inline-start: 18px; display: grid; gap: 4px; }
+
+/* Footer stays visible */
+.modal-foot {
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--c-border, #e6e6e6);
+  position: sticky; bottom: 0;
+  background: var(--c-bg, #fff);
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--c-border, #e6e6e6);
+  background: var(--c-btn, #f2f2f2);
+  color: var(--c-fg, #0f141a);
+  cursor: pointer;
+  width: 100%;                 /* better for mobile tap targets */
+}
+.btn-ghost { background: transparent; }
+.btn-accent {
+  background: linear-gradient(90deg, #ffd700, #ffb300);
+  border: none; color: #222; font-weight: 700;
+}
+
+/* Premium accent card */
+.plan-accent {
+  border: 1px solid #ffd86b;
+  background: linear-gradient(180deg, #fff7d6, #fff);
+}
+
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 900px) {
+  .plans-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .modal { width: 100%; margin: 0 auto; border-radius: 0; max-height: 100dvh; }
+  .modal-head, .modal-foot { padding: 12px; }
+  .plans-grid { grid-template-columns: 1fr; padding: 0 12px 6px; }
+  .plan { padding: 10px; }
+}
+
+/* ---------- Dark theme tokens (if you use .theme-dark) ---------- */
+.theme-dark {
+  --c-bg: #111417;
+  --c-fg: #e8eef5;
+  --c-border: #2a2f35;
+  --c-card: #151a1f;
+  --c-btn: #1d232a;
+}
+
+/* Optional: better focus outline */
+:where(button, [href], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #7aa7ff;
+  outline-offset: 2px;
+}
+
+
 
     .notification {
       position: fixed;
@@ -920,6 +1210,164 @@ element.style {
 
 
 
+/* Settings Panel Styles */
+.section {
+  margin: 20px 0;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-dark);
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.block-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+}
+
+.theme-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 2px solid var(--border-soft);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-card);
+}
+
+.pill input[type="radio"] {
+  margin: 0;
+}
+
+.pill:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.switch input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-mid);
+  margin-top: 8px;
+  opacity: 0.8;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+/* Dark Mode Variables */
+.theme-dark {
+  --bg-app: #1a1a1a;
+  --bg-card: #2a2a2a;
+  --bg-sidebar-from: #0f0f0f;
+  --bg-sidebar-to: #1a1a1a;
+  --border-soft: rgba(255, 255, 255, 0.1);
+  --text-dark: #e0e0e0;
+  --text-mid: #b0b0b0;
+  --accent-soft: #d67a7a;
+  --accent-strong: #e8d4b4;
+  --shadow-card: 0 12px 32px rgba(0,0,0,0.5);
+  --shadow-topbar: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+.theme-dark body {
+  background: var(--bg-app);
+  color: var(--text-dark);
+}
+
+.theme-dark .top-bar {
+  background: #3a4a3a;
+}
+
+.theme-dark .tabs-bar {
+  background: #1a1a0a;
+  border-bottom-color: #3a3a3a;
+}
+
+.theme-dark .page-title,
+.theme-dark .page-sub {
+  color: var(--text-dark);
+}
+
+.theme-dark .upload-btn {
+  background: #4a3a3a;
+  color: #e0e0e0;
+}
+
+.theme-dark .folder-card,
+.theme-dark .doc-card {
+  background: var(--bg-card);
+  border-color: var(--border-soft);
+}
+
+.theme-dark .modal {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+.theme-dark .modal-head,
+.theme-dark .modal-foot {
+  background: #2a2a2a;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .btn {
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .card {
+  background: #333;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.theme-dark .pill {
+  background: #3a3a3a;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+}
+
+.theme-dark .pill:has(input:checked) {
+  background: #d67a7a;
+  border-color: #e8d4b4;
+}
 
 
 
@@ -957,9 +1405,14 @@ element.style {
     <aside class="sidebar" id="sidebarDrawer">
       <div>
         <div class="brand-block">
-          <div class="brand-name">EcoDocs</div>
-          <div class="brand-sub">ארכיון חכם • שמור • אישי</div>
-        </div>
+  <div class="brand-row">
+    <div class="brand-name">EcoDocs</div>
+    <button id="closeMenuBtn" class="close-btn" aria-label="סגור">✕</button>
+  </div>
+
+  <div class="brand-sub">ארכיון חכם • שמור • אישי</div>
+</div>
+        
 
         <div class="user-panel">
           <div class="user-panel-name" id="currentUserLabel">שלום, משתמש!</div>
@@ -982,7 +1435,16 @@ element.style {
           <button class="menu-item" data-view="recycle">
             <div class="menu-item-icon">🗑️</div>
             <span>סל מחזור</span>
+            
           </button>
+          <button class="menu-item" data-view="settings">
+            <div class="menu-item-icon">⚙️</div>
+            <span>הגדרות</span>
+            
+          </button>
+
+          
+          
         </nav>
       </div>
 
@@ -1001,20 +1463,27 @@ element.style {
         </div>
 
         <div class="top-right">
-          <!-- תפריט מובייל -->
-          <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
-          <!-- Logout במובייל -->
-          <button class="logout-btn mobile-logout" id="mobileLogoutBtn">🚪 התנתקות</button>
 
-          <!-- כפתור העלאת קובץ -->
-          <button class="upload-btn" id="uploadBtn">📤 העלה מסמך</button>
-          <input
-            type="file"
-            id="fileInput"
-            class="hidden-input"
-            accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.bmp,.doc,.docx"
-          />
-        </div>
+          
+  <!-- כפתור פרימיום חדש -->
+  <button class="premium-btn" id="premiumBtn"> פרימיום</button>
+  <!-- תפריט מובייל -->
+  <button class="mobile-menu-btn" id="mobileMenuBtn">☰</button>
+
+  <!-- Logout במובייל -->
+  <button class="logout-btn mobile-logout" id="mobileLogoutBtn">🚪 התנתקות</button>
+
+  <!-- כפתור העלאת קובץ -->
+  <button class="upload-btn" id="uploadBtn">📤 העלה מסמך</button>
+  <input
+    type="file"
+    id="fileInput"
+    class="hidden-input"
+    accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.bmp,.doc,.docx"
+  />
+
+</div>
+
       </header>
 
       <!-- טאבים (משתמשת בהמשך בעיקר למיון/תצוגה) -->
@@ -1215,6 +1684,275 @@ element.style {
 </div>
 
 
+
+<!-- Premium Panel (Modal) -->
+<div id="premiumPanel" class="modal-backdrop hidden" dir="rtl" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="premiumTitle" tabindex="-1">
+    <div class="modal-head">
+      <h2 id="premiumTitle">בחרו תוכנית</h2>
+      <button class="modal-close" id="premiumCloseBtn" aria-label="סגור">✖</button>
+    </div>
+
+
+     <div class="scroll-area">
+    <p class="muted">שדרגו את Eco-Files כדי לקבל עוד שטח אחסון, שיתופים ללא הגבלה ותכונות חכמות.</p>
+
+    <div class="plans-grid">
+      <!-- Free -->
+      <article class="plan" data-plan="free" aria-label="תוכנית חינם">
+        <header>
+          <h3>חינם</h3>
+          <div class="price">₪0<span class="per">/חודש</span></div>
+        </header>
+        <ul class="features">
+          <li>אחסון עד 1GB</li>
+          <li>תיקייה משותפת אחת</li>
+          <li>העלאות בסיסיות</li>
+        </ul>
+        <button class="btn btn-ghost" disabled>נוכחי</button>
+      </article>
+
+      <!-- Pro -->
+      <article class="plan" data-plan="pro" aria-label="תוכנית פרו">
+        <header>
+          <h3>פרו</h3>
+          <div class="price">₪11<span class="per">/חודש</span></div>
+        </header>
+        <ul class="features">
+          <li>אחסון עד 10GB</li>
+          <li>שיתוף עד 5 משתמשים</li>
+          <li>תיוגים וחיפוש חכם</li>
+          <li>OCR מהיר</li>
+        </ul>
+        <button class="btn" data-select-plan="pro">בחר פרו</button>
+      </article>
+
+      <!-- Premium -->
+      <article class="plan plan-accent" data-plan="premium" aria-label="תוכנית פרימיום">
+        <header>
+          <h3>פרימיום 💎</h3>
+          <div class="price">₪29<span class="per">/חודש</span></div>
+        </header>
+        <ul class="features">
+          <li>אחסון בלתי מוגבל</li>
+          <li>שיתוף ללא הגבלה</li>
+          <li>AI סיווג וסריקה אוטומטית</li>
+          <li>סנכרון בזמן אמת ותמיכה בעדיפות</li>
+        </ul>
+        <button class="btn btn-accent" data-select-plan="premium">בחר פרימיום</button>
+      </article>
+    </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn" id="premiumLaterBtn">אולי אחר-כך</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Settings Panel -->
+<div id="settingsPanel" class="modal-backdrop hidden" dir="rtl" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
+    <header class="modal-head">
+      <h2 id="settingsTitle">הגדרות</h2>
+      <button class="icon-btn" data-close aria-label="סגור">
+        ✖
+      </button>
+    </header>
+
+    <div class="scroll-area">
+      <!-- Appearance -->
+      <section class="section">
+        <h3 class="section-title">מראה</h3>
+
+        <!-- Theme chooser -->
+        <!-- Theme chooser -->
+<div class="card">
+  <label class="block-label">ערכת צבע</label>
+  <div class="theme-row" role="radiogroup" aria-label="Theme">
+    <label class="pill">
+      <input type="radio" name="theme" value="light" id="themeLight">
+      <span>מצב בהיר</span>
+    </label>
+    <label class="pill">
+      <input type="radio" name="theme" value="dark" id="themeDark">
+      <span>מצב כהה</span>
+    </label>
+  </div>
+</div>
+
+        
+      </section>
+
+      <!-- Behavior -->
+      <section class="section">
+        <h3 class="section-title">התנהגות</h3>
+        <div class="grid-2">
+          <div class="card">
+            <label class="block-label">מחיקה</label>
+            <label class="switch">
+              <input type="checkbox" id="toggleConfirmDelete">
+              <span class="switch-ui"></span>
+              <span class="switch-text">אישור לפני מחיקה</span>
+            </label>
+            <p class="hint">יבקש אישור לפני מחיקת קובץ או תיקייה.</p>
+          </div>
+
+         
+        </div>
+      </section>
+    </div>
+
+    <footer class="modal-foot">
+      <button class="btn" data-close>סגור</button>
+    </footer>
+  </div>
+</div>
+
+
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  // Elements
+  const settingsBtn = document.querySelector('.menu-item[data-view="settings"]');
+  const panel = document.getElementById("settingsPanel");
+  const modal = panel?.querySelector(".modal");
+
+  // Theme inputs
+  const themeLight = document.getElementById("themeLight");
+  const themeDark = document.getElementById("themeDark");
+  
+  // Other inputs
+  const elCompact = document.getElementById("toggleCompact");
+  const elReduce = document.getElementById("toggleReduceMotion");
+  const elConfirm = document.getElementById("toggleConfirmDelete");
+  const elStart = document.getElementById("selectStart");
+
+  // Load + apply on boot
+  const DEFAULTS = {
+    theme: "light",
+    compact: false,
+    reduceMotion: false,
+    confirmDelete: true,
+    startPage: "my"
+  };
+
+  function loadSettings() {
+    try {
+      const raw = localStorage.getItem("eco_settings");
+      return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : { ...DEFAULTS };
+    } catch { 
+      return { ...DEFAULTS }; 
+    }
+  }
+
+  function saveSettings(s) {
+    localStorage.setItem("eco_settings", JSON.stringify(s));
+  }
+
+  function applySettings(s) {
+    // Theme - apply to documentElement
+    document.documentElement.classList.remove("theme-light", "theme-dark");
+    document.documentElement.classList.add(`theme-${s.theme}`);
+    
+    // Update radio buttons
+    if (themeLight) themeLight.checked = (s.theme === "light");
+    if (themeDark) themeDark.checked = (s.theme === "dark");
+
+    // Compact density
+    document.body.classList.toggle("compact-density", !!s.compact);
+    if (elCompact) elCompact.checked = !!s.compact;
+
+    // Reduce motion
+    document.documentElement.classList.toggle("reduce-motion", !!s.reduceMotion);
+    if (elReduce) elReduce.checked = !!s.reduceMotion;
+
+    // Confirm before delete
+    if (elConfirm) elConfirm.checked = !!s.confirmDelete;
+
+    // Default start page
+    if (elStart) elStart.value = s.startPage;
+  }
+
+  let settings = loadSettings();
+  applySettings(settings);
+
+  // Open/Close
+  function openSettings() {
+    panel?.classList.remove("hidden");
+    panel?.setAttribute("aria-hidden", "false");
+    document.documentElement.style.overflow = "hidden";
+    modal?.focus();
+  }
+  
+  function closeSettings() {
+    panel?.classList.add("hidden");
+    panel?.setAttribute("aria-hidden", "true");
+    document.documentElement.style.overflow = "";
+    settingsBtn?.focus();
+  }
+
+  settingsBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    openSettings();
+  });
+
+  // Close handlers
+  panel?.addEventListener("click", (e) => {
+    const t = e.target;
+    if (t === panel || t.closest("[data-close]")) closeSettings();
+  });
+  
+  panel?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeSettings();
+  });
+
+  // Theme toggle handlers
+  themeLight?.addEventListener("change", (e) => {
+    if (e.target.checked) {
+      settings.theme = "light";
+      saveSettings(settings);
+      applySettings(settings);
+    }
+  });
+  
+  themeDark?.addEventListener("change", (e) => {
+    if (e.target.checked) {
+      settings.theme = "dark";
+      saveSettings(settings);
+      applySettings(settings);
+    }
+  });
+
+  // Other handlers
+  elCompact?.addEventListener("change", (e) => {
+    settings.compact = !!e.target.checked;
+    saveSettings(settings);
+    applySettings(settings);
+  });
+  
+  elReduce?.addEventListener("change", (e) => {
+    settings.reduceMotion = !!e.target.checked;
+    saveSettings(settings);
+    applySettings(settings);
+  });
+  
+  elConfirm?.addEventListener("change", (e) => {
+    settings.confirmDelete = !!e.target.checked;
+    saveSettings(settings);
+    applySettings(settings);
+  });
+  
+  elStart?.addEventListener("change", (e) => {
+    settings.startPage = e.target.value;
+    saveSettings(settings);
+  });
+
+  // Export function for delete confirmation
+  window.shouldConfirmBeforeDelete = () => loadSettings().confirmDelete === true;
+});
+</script>
 
 
   <!-- סקריפט עזר UI (כניסה/יציאה/ניווט בתפריט) -->
