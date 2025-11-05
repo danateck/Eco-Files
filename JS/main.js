@@ -228,65 +228,68 @@ async function uploadDocument(file, metadata = {}) {
     : [];
 
   let downloadURL = null;
-  try {
-    if (window.storage) {
-      // Encode filename properly for Firebase Storage
-      const encodedName = encodeURIComponent(safeName);
-      const storagePath = `documents/${currentUser}/${newId}/${encodedName}`;
-      
-      console.log("📤 Attempting Storage upload to:", storagePath);
-      
-      const storageRef = window.fs.ref(window.storage, storagePath);
-      
-      // Set a timeout to prevent hanging
-      const uploadPromise = window.fs.uploadBytes(storageRef, file);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Upload timeout')), 10000) // 10 second timeout
-      );
-      
-      const snap = await Promise.race([uploadPromise, timeoutPromise]);
-      downloadURL = await window.fs.getDownloadURL(snap.ref);
-      console.log("✅ File uploaded to Storage:", downloadURL);
-    }
-  } catch (e) {
-    console.warn("⚠️ Storage upload failed (this is OK, will save locally):", e.message);
-    // Don't throw - continue without Storage URL
-    downloadURL = null;
+  // Around line 237-252 in uploadDocument
+try {
+  if (window.storage) {
+    const encodedName = encodeURIComponent(safeName);
+    const storagePath = `documents/${currentUser}/${newId}/${encodedName}`;
+    
+    console.log("📤 Attempting Storage upload to:", storagePath);
+    
+    const storageRef = window.fs.ref(window.storage, storagePath);
+    
+    // Increase timeout to 30 seconds for larger files
+    const uploadPromise = window.fs.uploadBytes(storageRef, file);
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Upload timeout')), 30000)
+    );
+    
+    const snap = await Promise.race([uploadPromise, timeoutPromise]);
+    downloadURL = await window.fs.getDownloadURL(snap.ref);
+    console.log("✅ File uploaded to Storage:", downloadURL);
   }
+} catch (e) {
+  console.warn("⚠️ Storage upload failed (will save metadata only):", e.message);
+  downloadURL = null;
+  // Don't throw - continue without Storage URL
+}
 
   const docRef = window.fs.doc(window.db, "documents", newId);
 
   // ✅ write canonical fields (avoid letting incoming metadata override owner/ids)
   const docData = {
-    // user-provided metadata (safe keys only)
-    title: metadata.title ?? safeName,
-    category: metadata.category ?? "אחר",
-    year: metadata.year ?? String(new Date().getFullYear()),
-    org: metadata.org ?? "",
-    recipient: Array.isArray(metadata.recipient) ? metadata.recipient : [],
+  title: metadata.title ?? safeName,
+  category: metadata.category ?? "אחר",
+  year: metadata.year ?? String(new Date().getFullYear()),
+  org: metadata.org ?? "",
+  recipient: Array.isArray(metadata.recipient) ? metadata.recipient : [],
+  
+  warrantyStart: metadata.warrantyStart ?? null,
+  warrantyExpiresAt: metadata.warrantyExpiresAt ?? null,
+  autoDeleteAfter: metadata.autoDeleteAfter ?? null,
+  
+  owner: currentUser,
+  sharedWith,
+  
+  downloadURL: downloadURL || null,
+  fileName: safeName,
+  fileSize: file?.size ?? null,
+  fileType: file?.type ?? "application/octet-stream",
+  
+  uploadedAt: (window.fs.serverTimestamp?.() ?? Date.now()),
+  lastModified: (window.fs.serverTimestamp?.() ?? Date.now()),
+  lastModifiedBy: currentUser,
+  deletedAt: null,
+  deletedBy: null
+  // Make sure NO undefined fields are here
+};
 
-    // warranty (if you use it)
-    warrantyStart: metadata.warrantyStart ?? null,
-    warrantyExpiresAt: metadata.warrantyExpiresAt ?? null,
-    autoDeleteAfter: metadata.autoDeleteAfter ?? null,
-
-    // ownership & sharing
-    owner: currentUser,
-    sharedWith,
-
-    // file info
-    downloadURL: downloadURL || null,
-    fileName: safeName,
-    fileSize: file?.size ?? null,
-    fileType: file?.type ?? "application/octet-stream",
-
-    // timestamps / soft delete
-    uploadedAt: (window.fs.serverTimestamp?.() ?? Date.now()),
-    lastModified: (window.fs.serverTimestamp?.() ?? Date.now()),
-    lastModifiedBy: currentUser,
-    deletedAt: null,
-    deletedBy: null,
-  };
+// Remove any undefined fields before saving
+Object.keys(docData).forEach(key => {
+  if (docData[key] === undefined) {
+    delete docData[key];
+  }
+});
 
   await window.fs.setDoc(docRef, docData, { merge: true });
   console.log("✅ Document metadata saved to Firestore:", newId);
@@ -2043,6 +2046,12 @@ function ensureUserSharedFields(allUsersData, username) {
   if (!u.outgoingShareRequests) u.outgoingShareRequests = [];
 }
 
+
+
+
+let openSharedView, openRecycleView, openCategoryView, renderHome;
+
+
 /*********************
  * 4. אפליקציה / UI  *
  *********************/
@@ -2515,8 +2524,7 @@ function openSharedFolderPicker(me, onSelect) {
 }
 
 
-// === UI: רינדור ניהול תיקיות משותפות + בקשות ממתינות ===
-function openSharedView() {
+openSharedView = function() {
   docsList.classList.remove("shared-mode");
 
   categoryTitle.textContent = "אחסון משותף";
@@ -3009,7 +3017,9 @@ pendingBox.addEventListener("click", async (ev) => {
 renderPending();
   homeView.classList.add("hidden");
   categoryView.classList.remove("hidden");
-}
+
+};
+
 
 
 
@@ -3280,25 +3290,42 @@ setUserDocs(userNow, allDocsData, allUsersData);
 
 
 // === Mirror to Firestore (owner document) ===
+// === Mirror to Firestore (owner document) ===
 if (isFirebaseAvailable()) {
   try {
     const ownerEmail = normalizeEmail(getCurrentUserEmail() || userNow);
     const docRef = window.fs.doc(window.db, "documents", newId);
 
-    // Write metadata only (do NOT store the base64)
-    await window.fs.setDoc(docRef, {
-      ...newDoc,
+    // Create a clean copy without undefined fields
+    const cleanDoc = {
+      id: newDoc.id,
+      title: newDoc.title,
+      originalFileName: newDoc.originalFileName,
+      category: newDoc.category,
+      uploadedAt: newDoc.uploadedAt,
+      year: newDoc.year,
+      org: newDoc.org || "",
+      recipient: newDoc.recipient || [],
+      sharedWith: newDoc.sharedWith || [],
+      warrantyStart: newDoc.warrantyStart || null,
+      warrantyExpiresAt: newDoc.warrantyExpiresAt || null,
+      autoDeleteAfter: newDoc.autoDeleteAfter || null,
+      mimeType: newDoc.mimeType,
+      hasFile: true,
       owner: ownerEmail,
-      // make sure we don't accidentally write any large dataURL fields
-      fileDataBase64: undefined
-    }, { merge: true });
+      downloadURL: null, // Will be updated by uploadDocument if storage succeeds
+      deletedAt: null,
+      deletedBy: null,
+      lastModified: Date.now(),
+      lastModifiedBy: ownerEmail
+    };
 
+    await window.fs.setDoc(docRef, cleanDoc, { merge: true });
     console.log("✅ Mirrored owner doc to Firestore:", newId);
   } catch (e) {
     console.error("❌ Firestore mirror failed:", e);
   }
 }
-
 
 // If this doc is in a shared folder, sync to Firestore immediately
 if (newDoc.sharedFolderId && isFirebaseAvailable()) {
