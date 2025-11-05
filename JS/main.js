@@ -230,16 +230,28 @@ async function uploadDocument(file, metadata = {}) {
   let downloadURL = null;
   try {
     if (window.storage) {
-      const storageRef = window.fs.ref(
-        window.storage,
-        `documents/${currentUser}/${newId}/${safeName}`
+      // Encode filename properly for Firebase Storage
+      const encodedName = encodeURIComponent(safeName);
+      const storagePath = `documents/${currentUser}/${newId}/${encodedName}`;
+      
+      console.log("📤 Attempting Storage upload to:", storagePath);
+      
+      const storageRef = window.fs.ref(window.storage, storagePath);
+      
+      // Set a timeout to prevent hanging
+      const uploadPromise = window.fs.uploadBytes(storageRef, file);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Upload timeout')), 10000) // 10 second timeout
       );
-      const snap = await window.fs.uploadBytes(storageRef, file);
+      
+      const snap = await Promise.race([uploadPromise, timeoutPromise]);
       downloadURL = await window.fs.getDownloadURL(snap.ref);
       console.log("✅ File uploaded to Storage:", downloadURL);
     }
   } catch (e) {
-    console.warn("⚠️ Storage upload skipped/failed:", e);
+    console.warn("⚠️ Storage upload failed (this is OK, will save locally):", e.message);
+    // Don't throw - continue without Storage URL
+    downloadURL = null;
   }
 
   const docRef = window.fs.doc(window.db, "documents", newId);
