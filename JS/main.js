@@ -2090,15 +2090,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 
 
-  const currentUser   = getCurrentUser();
+const currentUser = getCurrentUser();
   if (!currentUser) {
-    // אם אין משתמש שמור, אפשר פשוט לבחור "ברירת מחדל"
-    // או להפנות למסך התחברות אם יש לך אחד
-    sessionStorage.setItem(CURRENT_USER_KEY, "defaultUser");
+    // אם אין משתמש שמור, redirect to login
+    console.warn("⚠️ No user logged in, redirecting to login...");
+    window.location.href = "./forms/eco-wellness/index.html";
+    return; // Stop execution
   }
 
-  const userNow = getCurrentUser() || "defaultUser";
-
+  const userNow = currentUser;
+  console.log("👤 Current user:", userNow);
   
 
   const homeView      = document.getElementById("homeView");
@@ -2174,7 +2175,7 @@ function ensureUserSharedFields(allUsersData, username) {
 
 
 
-  
+
 function findUsernameByEmail(allUsersData, email) {
   const target = (email || "").trim().toLowerCase();
   for (const [uname, u] of Object.entries(allUsersData)) {
