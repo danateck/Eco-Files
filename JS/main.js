@@ -1,5 +1,10 @@
 function normalizeEmail(e) { return (e || "").trim().toLowerCase(); }
 
+
+const API_BASE = (location.hostname === 'localhost')
+  ? 'http://localhost:8787'
+  : 'https://<your-render-service>'; // after you deploy
+
 // Read the globals created by firebase-config.js
 let appRef = window.app;
 let dbRef = window.db;
@@ -158,143 +163,67 @@ function isFirebaseAvailable() {
 // v9 modular version
 async function loadDocuments() {
   const me = getCurrentUserEmail();
-  console.log("📥 loadDocuments called for:", me);
-  
-  if (!me) {
-    console.warn("❌ No user email, cannot load documents");
-    return [];
-  }
-  
-  if (!isFirebaseAvailable()) {
-    console.warn("❌ Firebase unavailable, cannot load documents");
-    return [];
+  if (!me) return [];
+
+  const headers = {};
+  if (window.auth?.currentUser) {
+    const token = await window.auth.currentUser.getIdToken();
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    headers['X-Dev-Email'] = me; // dev only
   }
 
-  const col = window.fs.collection(window.db, "documents");
-  const qOwned  = window.fs.query(col, window.fs.where("owner", "==", me));
-  const qShared = window.fs.query(col, window.fs.where("sharedWith", "array-contains", me));
-
-  const [ownedSnap, sharedSnap] = await Promise.all([
-    window.fs.getDocs(qOwned),
-    window.fs.getDocs(qShared),
-  ]);
-
-  const map = new Map();
-  ownedSnap.forEach(d => {
-    const data = { id: d.id, ...d.data() };
-    console.log("📄 Owned document:", data.title || data.fileName, "ID:", d.id);
-    map.set(d.id, data);
-  });
-  
-  sharedSnap.forEach(d => { 
-    if (!map.has(d.id)) {
-      const data = { id: d.id, ...d.data() };
-      console.log("📄 Shared document:", data.title || data.fileName, "ID:", d.id);
-      map.set(d.id, data);
-    }
-  });
-
-  const result = Array.from(map.values());
-  console.log("✅ Total documents loaded:", result.length);
-  return result;
+  const res = await fetch(`${API_BASE}/api/docs`, { headers });
+  if (!res.ok) return [];
+  const list = await res.json();
+  return list.map(d => ({
+    id: d.id,
+    title: d.title || d.file_name,
+    fileName: d.file_name,
+    fileType: d.mime_type,
+    fileSize: d.file_size,
+    category: d.category || 'אחר',
+    year: d.year || '',
+    org: d.org || '',
+    recipient: Array.isArray(d.recipient) ? d.recipient : [],
+    sharedWith: d.shared_with || [],
+    uploadedAt: d.uploaded_at,
+    lastModified: d.last_modified,
+    owner: me,
+    hasFile: true
+  }));
 }
+
 
 // ============================================
 // FIX 2: Upload document with owner info
 // ============================================
 async function uploadDocument(file, metadata = {}) {
-  // ✅ who is the owner
-  const raw = getCurrentUserEmail();
-  const currentUser = raw ? normalizeEmail(raw) : null;
-  
-  console.log("📤 Uploading document for user:", currentUser);
-  
-  if (!currentUser) {
-    console.error("❌ No current user for upload");
-    throw new Error("User not logged in");
+  const me = getCurrentUserEmail();
+  if (!me) throw new Error("User not logged in");
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('title', metadata.title ?? file.name);
+  fd.append('category', metadata.category ?? 'אחר');
+  fd.append('year', metadata.year ?? String(new Date().getFullYear()));
+  fd.append('org', metadata.org ?? '');
+  fd.append('recipient', JSON.stringify(Array.isArray(metadata.recipient) ? metadata.recipient : []));
+  if (metadata.warrantyStart)     fd.append('warrantyStart', metadata.warrantyStart);
+  if (metadata.warrantyExpiresAt) fd.append('warrantyExpiresAt', metadata.warrantyExpiresAt);
+  if (metadata.autoDeleteAfter)   fd.append('autoDeleteAfter', metadata.autoDeleteAfter);
+
+  const headers = {};
+  if (window.auth?.currentUser) {
+    const token = await window.auth.currentUser.getIdToken();
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    headers['X-Dev-Email'] = me; // dev only
   }
 
-  // ✅ stable doc id used by both UI & Firestore
-  const newId = crypto.randomUUID();
-
-  // ✅ sanitize filename for Storage path safety (no weird chars/slashes)
-  const safeName = (file?.name || "file")
-    .replace(/[\\/]+/g, "_")
-    .replace(/[^\w.\-() \u0590-\u05FF]/g, "_"); // allow Hebrew too
-
-  // ✅ normalize & de-dupe sharedWith, and never include owner
-  const sharedWith = Array.isArray(metadata.sharedWith)
-    ? [...new Set(metadata.sharedWith.map(normalizeEmail).filter(e => e && e !== currentUser))]
-    : [];
-
-  let downloadURL = null;
-  // Around line 237-252 in uploadDocument
-try {
-  if (window.storage) {
-    const encodedName = encodeURIComponent(safeName);
-    const storagePath = `documents/${currentUser}/${newId}/${encodedName}`;
-    
-    console.log("📤 Attempting Storage upload to:", storagePath);
-    
-    const storageRef = window.fs.ref(window.storage, storagePath);
-    
-    // Increase timeout to 30 seconds for larger files
-    const uploadPromise = window.fs.uploadBytes(storageRef, file);
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Upload timeout')), 30000)
-    );
-    
-    const snap = await Promise.race([uploadPromise, timeoutPromise]);
-    downloadURL = await window.fs.getDownloadURL(snap.ref);
-    console.log("✅ File uploaded to Storage:", downloadURL);
-  }
-} catch (e) {
-  console.warn("⚠️ Storage upload failed (will save metadata only):", e.message);
-  downloadURL = null;
-  // Don't throw - continue without Storage URL
-}
-
-  const docRef = window.fs.doc(window.db, "documents", newId);
-
-  // ✅ write canonical fields (avoid letting incoming metadata override owner/ids)
-  const docData = {
-  title: metadata.title ?? safeName,
-  category: metadata.category ?? "אחר",
-  year: metadata.year ?? String(new Date().getFullYear()),
-  org: metadata.org ?? "",
-  recipient: Array.isArray(metadata.recipient) ? metadata.recipient : [],
-  
-  warrantyStart: metadata.warrantyStart ?? null,
-  warrantyExpiresAt: metadata.warrantyExpiresAt ?? null,
-  autoDeleteAfter: metadata.autoDeleteAfter ?? null,
-  
-  owner: currentUser,
-  sharedWith,
-  
-  downloadURL: downloadURL || null,
-  fileName: safeName,
-  fileSize: file?.size ?? null,
-  fileType: file?.type ?? "application/octet-stream",
-  
-  uploadedAt: (window.fs.serverTimestamp?.() ?? Date.now()),
-  lastModified: (window.fs.serverTimestamp?.() ?? Date.now()),
-  lastModifiedBy: currentUser,
-  deletedAt: null,
-  deletedBy: null
-  // Make sure NO undefined fields are here
-};
-
-// Remove any undefined fields before saving
-Object.keys(docData).forEach(key => {
-  if (docData[key] === undefined) {
-    delete docData[key];
-  }
-});
-
-  await window.fs.setDoc(docRef, docData, { merge: true });
-  console.log("✅ Document metadata saved to Firestore:", newId);
-  
-  return { id: newId, ...docData };
+  const res = await fetch(`${API_BASE}/api/docs`, { method: 'POST', headers, body: fd });
+  if (!res.ok) throw new Error(await res.text());
+  return await res.json();
 }
 
 
