@@ -1,4 +1,449 @@
-// main.js - גרסה עם IndexedDB לשמירת קבצים גדולים בצורה יציבה
+function normalizeEmail(e) { return (e || "").trim().toLowerCase(); }
+
+// Read the globals created by firebase-config.js
+let appRef = window.app;
+let dbRef = window.db;
+let storageRef = window.storage;
+let fsRef = window.fs;
+
+// If not ready yet, wait for the event from firebase-config.js
+if (!appRef || !dbRef || !fsRef) {
+  console.warn("Firebase not ready yet, waiting for firebase-ready…");
+  window.addEventListener("firebase-ready", () => {
+    appRef = window.app;
+    dbRef = window.db;
+    storageRef = window.storage;
+    fsRef = window.fs;
+    console.log("🔥 Firebase globals restored (event)");
+    // if you need to kick off boot logic, call it here, e.g. bootFromCloud();
+  }, { once: true });
+} else {
+  console.log("🔥 Firebase globals restored");
+}
+
+// If the rest of your file references `app`, `db`, `storage`, `fs`,
+// either replace uses with appRef/dbRef/… or add:
+const app = appRef;
+const db = dbRef;
+const storage = storageRef;
+const fs = fsRef;
+
+
+
+// ---- Minimal pending-invites renderer ----
+window.paintPending = window.paintPending || function(invites = []) {
+  const box = document.getElementById("sf_pending");
+  if (!box) return;
+  if (!Array.isArray(invites) || invites.length === 0) {
+    box.innerHTML = `<em>אין בקשות ממתינות</em>`;
+    return;
+  }
+  box.innerHTML = invites.map(i => `
+    <div class="invite" data-id="${i.id}">
+      <div><strong>${i.folderName || "תיקייה"}</strong></div>
+      <div>${i.fromEmail || ""} → ${i.toEmail || ""}</div>
+      <div style="margin-top:.25rem;">
+        <button class="accept" data-id="${i.id}">אישור</button>
+        <button class="reject" data-id="${i.id}">דחייה</button>
+      </div>
+    </div>
+  `).join("");
+
+  box.onclick = async (e) => {
+    const t = e.target;
+    const id = t?.dataset?.id;
+    if (!id) return;
+    try {
+      if (t.classList.contains("accept")) await updateInviteStatus(id, "accepted");
+      if (t.classList.contains("reject")) await updateInviteStatus(id, "rejected");
+    } catch (err) {
+      console.error("Failed to update invite:", err);
+    }
+  };
+};
+
+
+
+// ---- Global safety net (place near top of main.js) ----
+window.allDocsData = Array.isArray(window.allDocsData) ? window.allDocsData : [];
+window.allUsersData = window.allUsersData || {};   // some code calls setUserDocs(..., allUsersData)
+window.userNow = window.userNow
+  || (typeof getCurrentUser === "function" && getCurrentUser())
+  || (typeof getCurrentUserEmail === "function" && getCurrentUserEmail())
+  || "";
+
+
+
+
+
+/******** NO-LOCAL-STORAGE SHIM (Firebase-only) ********/
+
+// Current user email: prefer Firebase Auth if you use it.
+// Fallback to your existing helper (getCurrentUserEmail) if present.
+function getCurrentUserFirebaseOnly() {
+  // If you added Firebase Auth:
+  // const u = (window.firebaseAuth && window.firebaseAuth.currentUser);
+  // if (u && u.email) return u.email.trim().toLowerCase();
+
+  // Otherwise reuse your session helper (or replace with your own source of truth):
+  if (typeof getCurrentUserEmail === "function") {
+    return (getCurrentUserEmail() || "").trim().toLowerCase();
+  }
+  return ""; // not logged in
+}
+
+// In-memory cache (not persisted)
+const memoryUsers = Object.create(null);
+
+// ── REPLACING the old “LocalStorage section” ──
+// Delete your previous STORAGE_KEY/CURRENT_USER_KEY and the functions that used sessionStorage.
+// Replace them **exactly** with the following no-ops / Firebase-only versions:
+
+function loadAllUsersDataFromStorage() {
+  // No local storage: return our in-memory map
+  return memoryUsers;
+}
+
+function saveAllUsersDataToStorage(allUsersData) {
+  // No local storage: keep memory in sync (no disk write)
+  Object.assign(memoryUsers, allUsersData || {});
+}
+
+function getCurrentUser() {
+  // No local/session storage: always read from Firebase/Auth helper
+  return getCurrentUserFirebaseOnly();
+}
+
+function getUserDocs(username, _allUsersData) {
+  // Your app already keeps `allDocsData` for the signed-in user.
+  // If some code still calls this, return from memory cache if present.
+  return (memoryUsers[username]?.docs) || [];
+}
+
+function setUserDocs(username, docsArray, _allUsersData) {
+  // Keep an in-memory copy for UI components that expect it,
+  // but DO NOT write to local/session storage.
+  if (!memoryUsers[username]) memoryUsers[username] = { password: "", docs: [] };
+  memoryUsers[username].docs = Array.isArray(docsArray) ? docsArray : [];
+
+  // If you want to persist something to Firestore (optional),
+  // you can save a lightweight marker under users/{email}, NOT the whole docs:
+  // const email = (username normalizeEmail|| "").trim().toLowerCase();
+  // if (email && window.db && window.fs) {
+  //   const userRef = window.fs.doc(window.db, "users", email);
+  //   window.fs.setDoc(userRef, { lastDocsCount: memoryUsers[username].docs.length, updatedAt: Date.now() }, { merge: true });
+  // }
+}
+/******** END NO-LOCAL-STORAGE SHIM ********/
+
+
+
+
+
+let stopWatching = null;
+// Add this helper function at the top of your main.js
+function getCurrentUserEmail() {
+  const raw = sessionStorage.getItem("docArchiveCurrentUser") || "";
+  return raw.trim().toLowerCase();
+}
+
+function isFirebaseAvailable() {
+  return !!(window.db && window.fs && typeof window.fs.collection === "function");
+}
+
+// ============================================
+// FIX 1: Load documents with user filtering
+// ============================================
+// v9 modular version
+// v9 modular version
+async function loadDocuments() {
+  const me = getCurrentUserEmail();
+  if (!me) return [];                 // not logged in yet
+  if (!isFirebaseAvailable()) return []; // no cloud, nothing to load
+
+  const col = window.fs.collection(window.db, "documents");
+  const qOwned  = window.fs.query(col, window.fs.where("owner", "==", me));
+  const qShared = window.fs.query(col, window.fs.where("sharedWith", "array-contains", me));
+
+  const [ownedSnap, sharedSnap] = await Promise.all([
+    window.fs.getDocs(qOwned),
+    window.fs.getDocs(qShared),
+  ]);
+
+  const map = new Map();
+  ownedSnap.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
+  sharedSnap.forEach(d => { if (!map.has(d.id)) map.set(d.id, { id: d.id, ...d.data() }); });
+
+  return Array.from(map.values());
+}
+
+
+// ============================================
+// FIX 2: Upload document with owner info
+// ============================================
+async function uploadDocument(file, metadata = {}) {
+  // ✅ who is the owner
+  const raw = getCurrentUserEmail();
+  const currentUser = raw ? normalizeEmail(raw) : null;
+  if (!currentUser) throw new Error("User not logged in");
+
+  // ✅ stable doc id used by both UI & Firestore
+  const newId = crypto.randomUUID();
+
+  // ✅ sanitize filename for Storage path safety (no weird chars/slashes)
+  const safeName = (file?.name || "file")
+    .replace(/[\\/]+/g, "_")
+    .replace(/[^\w.\-() \u0590-\u05FF]/g, "_"); // allow Hebrew too
+
+  // ✅ normalize & de-dupe sharedWith, and never include owner
+  const sharedWith = Array.isArray(metadata.sharedWith)
+    ? [...new Set(metadata.sharedWith.map(normalizeEmail).filter(e => e && e !== currentUser))]
+    : [];
+
+  let downloadURL = null;
+  try {
+    if (window.storage) {
+      const storageRef = window.fs.ref(
+        window.storage,
+        `documents/${currentUser}/${newId}/${safeName}`
+      );
+      const snap = await window.fs.uploadBytes(storageRef, file);
+      downloadURL = await window.fs.getDownloadURL(snap.ref);
+    }
+  } catch (e) {
+    console.warn("Storage upload skipped/failed:", e);
+  }
+
+  const docRef = window.fs.doc(window.db, "documents", newId);
+
+  // ✅ write canonical fields (avoid letting incoming metadata override owner/ids)
+  const docData = {
+    // user-provided metadata (safe keys only)
+    title: metadata.title ?? safeName,
+    category: metadata.category ?? "אחר",
+    year: metadata.year ?? String(new Date().getFullYear()),
+    org: metadata.org ?? "",
+    recipient: Array.isArray(metadata.recipient) ? metadata.recipient : [],
+
+    // warranty (if you use it)
+    warrantyStart: metadata.warrantyStart ?? null,
+    warrantyExpiresAt: metadata.warrantyExpiresAt ?? null,
+    autoDeleteAfter: metadata.autoDeleteAfter ?? null,
+
+    // ownership & sharing
+    owner: currentUser,
+    sharedWith,
+
+    // file info
+    downloadURL: downloadURL || null,
+    fileName: safeName,
+    fileSize: file?.size ?? null,
+    fileType: file?.type ?? "application/octet-stream",
+
+    // timestamps / soft delete
+    uploadedAt: (window.fs.serverTimestamp?.() ?? Date.now()),
+    lastModified: (window.fs.serverTimestamp?.() ?? Date.now()),
+    lastModifiedBy: currentUser,
+    deletedAt: null,
+    deletedBy: null,
+  };
+
+  await window.fs.setDoc(docRef, docData, { merge: true });
+  return { id: newId, ...docData };
+}
+
+
+
+
+function watchMyDocs() {
+  if (!isFirebaseAvailable()) return () => {};
+  if (stopWatching) { try { stopWatching(); } catch (_) {} }
+
+  const me = getCurrentUserEmail();
+  if (!me) return () => {};
+
+  const col = window.fs.collection(window.db, "documents");
+  const qOwned  = window.fs.query(col, window.fs.where("owner", "==", me));
+  const qShared = window.fs.query(col, window.fs.where("sharedWith", "array-contains", me));
+
+  const applySnap = (snap) => {
+    // Merge into global allDocsData (owned + shared)
+    const byId = new Map((allDocsData || []).map(d => [d.id, d]));
+    snap.forEach(doc => {
+      const data = { id: doc.id, ...doc.data() };
+      byId.set(doc.id, data);
+    });
+    allDocsData = Array.from(byId.values());
+    // Make sure your app-level cache also updated:
+    if (typeof setUserDocs === "function" && typeof allUsersData !== "undefined" && typeof userNow !== "undefined") {
+      setUserDocs(userNow, allDocsData, allUsersData);
+    }
+    // Re-render the current view
+    if (typeof categoryTitle !== "undefined" && categoryTitle?.textContent) {
+      const current = categoryTitle.textContent;
+      if (current === "אחסון משותף" && typeof openSharedView === "function") {
+        openSharedView();
+      } else if (current === "סל מחזור" && typeof openRecycleView === "function") {
+        openRecycleView();
+      } else if (typeof openCategoryView === "function") {
+        openCategoryView(current);
+      } else if (typeof renderHome === "function") {
+        renderHome();
+      }
+    } else if (typeof renderHome === "function") {
+      renderHome();
+    }
+  };
+
+  const unsubOwned  = window.fs.onSnapshot(qOwned,  (snap) => applySnap(snap));
+  const unsubShared = window.fs.onSnapshot(qShared, (snap) => applySnap(snap));
+
+  stopWatching = () => { unsubOwned(); unsubShared(); };
+  return stopWatching;
+}
+
+
+
+
+async function bootFromCloud() {
+  const me = getCurrentUserEmail();
+  if (!me || !isFirebaseAvailable()) return;
+
+  try {
+    if (typeof showLoading === "function") showLoading("טוען מסמכים מהענן...");
+    const docs = await loadDocuments();
+    // Save into your app globals (these exist in your project)
+    allDocsData = docs || [];
+    if (typeof setUserDocs === "function" && typeof allUsersData !== "undefined" && typeof userNow !== "undefined") {
+      setUserDocs(userNow, allDocsData, allUsersData);
+    }
+    if (typeof renderHome === "function") renderHome();
+  } finally {
+    if (typeof hideLoading === "function") hideLoading();
+  }
+
+  // start live updates
+  watchMyDocs();
+}
+
+
+
+
+// ============================================
+// FIX 3: Load shared folders with user filtering
+// ============================================
+async function loadSharedFolders() {
+  const currentUser = getCurrentUserEmail();
+  if (!currentUser || !isFirebaseAvailable()) return [];
+
+  const col = window.fs.collection(window.db, "sharedFolders");
+  const qOwned  = window.fs.query(col, window.fs.where("owner", "==", currentUser));
+  const qMember = window.fs.query(col, window.fs.where("members", "array-contains", currentUser));
+
+  const [ownedSnap, memberSnap] = await Promise.all([
+    window.fs.getDocs(qOwned),
+    window.fs.getDocs(qMember),
+  ]);
+
+  const out = [];
+  ownedSnap.forEach(d => out.push({ id: d.id, ...d.data() }));
+  memberSnap.forEach(d => { if (!out.find(f => f.id === d.id)) out.push({ id: d.id, ...d.data() }); });
+  return out;
+}
+
+// ============================================
+// FIX 4: Create shared folder with owner info
+// ============================================
+async function createSharedFolder(folderName, invitedEmails = []) {
+  const currentUser = getCurrentUserEmail();
+  if (!currentUser || !isFirebaseAvailable()) throw new Error("User not logged in");
+
+  const folderData = {
+    name: folderName,
+    owner: currentUser,
+    members: [currentUser, ...invitedEmails.map(normalizeEmail)],
+    pendingInvites: invitedEmails.map(e => ({
+      email: normalizeEmail(e),
+      invitedBy: currentUser,
+      invitedAt: Date.now(),
+      status: "pending",
+    })),
+    createdAt: Date.now(),
+    createdBy: currentUser,
+  };
+
+  const col = window.fs.collection(window.db, "sharedFolders");
+  const ref = await window.fs.addDoc(col, folderData);
+  return { id: ref.id, ...folderData };
+}
+
+
+// ============================================
+// FIX 5: Share document with proper ownership check
+// ============================================
+async function shareDocument(docId, recipientEmails) {
+  const me = getCurrentUserEmail();
+  if (!me || !isFirebaseAvailable()) throw new Error("User not logged in");
+
+  const ref  = window.fs.doc(window.db, "documents", docId);
+  const snap = await window.fs.getDoc(ref);
+  if (!snap.exists()) throw new Error("Document not found");
+
+  const data = snap.data();
+  if (data.owner !== me) throw new Error("Only the owner can share this document");
+
+  const newShared = [...new Set([...(data.sharedWith || []), ...recipientEmails.map(normalizeEmail)])];
+  await window.fs.updateDoc(ref, { sharedWith: newShared, lastModified: Date.now(), lastModifiedBy: me });
+  return { success: true };
+}
+
+
+// ============================================
+// FIX 6: Get documents for specific category with user filter
+// ============================================
+async function getDocumentsByCategory(category) {
+  const me = getCurrentUserEmail();
+  if (!me || !isFirebaseAvailable()) return [];
+
+  const col = window.fs.collection(window.db, "documents");
+  const qOwned  = window.fs.query(col,
+    window.fs.where("owner", "==", me),
+    window.fs.where("category", "==", category),
+    window.fs.where("deletedAt", "==", null)
+  );
+  const qShared = window.fs.query(col,
+    window.fs.where("sharedWith", "array-contains", me),
+    window.fs.where("category", "==", category),
+    window.fs.where("deletedAt", "==", null)
+  );
+
+  const [a, b] = await Promise.all([window.fs.getDocs(qOwned), window.fs.getDocs(qShared)]);
+  const out = [];
+  a.forEach(d => out.push({ id: d.id, ...d.data() }));
+  b.forEach(d => { if (!out.find(x => x.id === d.id)) out.push({ id: d.id, ...d.data() }); });
+  return out;
+}
+
+// ============================================
+// EXPORT ALL FUNCTIONS
+// ============================================
+// Make these available globally or export them
+window.AppFunctions = {
+  loadDocuments,
+  uploadDocument,
+  loadSharedFolders,
+  createSharedFolder,
+  shareDocument,
+  getDocumentsByCategory,
+  getCurrentUserEmail
+};
+
+console.log("✅ User-scoped Firebase functions loaded");
+
+
+
+
+
 
 
 document.getElementById("closeMenuBtn")?.addEventListener("click", () => {
@@ -47,6 +492,372 @@ window.isFirebaseAvailable = function() {
     return false;
   }
 };
+
+
+
+
+
+async function uploadDocumentWithStorage(file, metadata = {}, forcedId=null) {
+  
+  const currentUser = normalizeEmail(getCurrentUserEmail());
+  if (!currentUser) throw new Error("User not logged in");
+
+  const id = forcedId || crypto.randomUUID();
+  let downloadURL = null;
+
+  // (optional) upload bytes to Storage
+  if (window.storage && isFirebaseAvailable()) {
+    const storageRef = window.fs.ref(window.storage, `documents/${currentUser}/${id}_${file.name}`);
+    const snap = await window.fs.uploadBytes(storageRef, file);
+    downloadURL = await window.fs.getDownloadURL(snap.ref);
+  }
+
+  // write metadata to Firestore
+  const docRef = window.fs.doc(window.db, "documents", id);
+  const docData = {
+    ...metadata,
+    owner: currentUser,
+    sharedWith: Array.isArray(metadata.sharedWith) ? metadata.sharedWith : [],
+    fileName: file.name,
+    fileType: file.type,
+    fileSize: file.size,
+    uploadedAt: Date.now(),
+    downloadURL: downloadURL || null,
+    deletedAt: null,
+    deletedBy: null,
+  };
+  await window.fs.setDoc(docRef, docData, { merge: true });
+  return { id, ...docData };
+}
+
+
+
+// 3. Updated file upload handler (replace in your DOMContentLoaded)
+// Replace your existing fileInput.addEventListener("change", ...) with this:
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  if (!file) {
+    showNotification("❌ ×œ× × ×'×—×¨ ק×•×'×¥", true);
+    return;
+  }
+
+  try {
+    const fileName = file.name.trim();
+
+    // Check for duplicates
+    const alreadyExists = allDocsData.some(doc => {
+      return (
+        doc.originalFileName === fileName &&
+        doc._trashed !== true
+      );
+    });
+    
+    if (alreadyExists) {
+      showNotification("הקובץ הזה כבר קיים בארכיון שלך", true);
+      fileInput.value = "";
+      return;
+    }
+
+    // Guess category
+    let guessedCategory = guessCategoryForFileNameOnly(file.name);
+    if (!guessedCategory || guessedCategory === "אחר") {
+      const manual = prompt(
+        'לא זיהיתי אוטומטית את סוג המסמך.\nלאיזה תיקייה לשמור?\nאפשרויות: ' +
+        CATEGORIES.join(", "),
+        "רפואה"
+      );
+      if (manual && manual.trim() !== "") {
+        guessedCategory = manual.trim();
+      } else {
+        guessedCategory = "אחר";
+      }
+    }
+
+    // Warranty details if needed
+    let warrantyStart = null;
+    let warrantyExpiresAt = null;
+    let autoDeleteAfter = null;
+
+    if (guessedCategory === "אחריות") {
+      let extracted = {
+        warrantyStart: null,
+        warrantyExpiresAt: null,
+        autoDeleteAfter: null,
+      };
+
+      if (file.type === "application/pdf") {
+        const ocrText = await extractTextFromPdfWithOcr(file);
+        const dataFromText = extractWarrantyFromText(ocrText);
+        extracted = { ...extracted, ...dataFromText };
+      }
+
+      if (file.type.startsWith("image/") && window.Tesseract) {
+        const { data } = await window.Tesseract.recognize(file, "heb+eng", {
+          tessedit_pageseg_mode: 6,
+        });
+        const imgText = data?.text || "";
+        const dataFromText = extractWarrantyFromText(imgText);
+        extracted = { ...extracted, ...dataFromText };
+      }
+
+      if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
+        const buf = await file.arrayBuffer().catch(() => null);
+        if (buf) {
+          const txt = new TextDecoder("utf-8").decode(buf);
+          const dataFromText = extractWarrantyFromText(txt);
+          extracted = { ...extracted, ...dataFromText };
+        }
+      }
+
+      if (!extracted.warrantyStart && !extracted.warrantyExpiresAt) {
+        const manualData = fallbackAskWarrantyDetails();
+        if (manualData.warrantyStart) {
+          extracted.warrantyStart = manualData.warrantyStart;
+        }
+        if (manualData.warrantyExpiresAt) {
+          extracted.warrantyExpiresAt = manualData.warrantyExpiresAt;
+        }
+        if (manualData.autoDeleteAfter) {
+          extracted.autoDeleteAfter = manualData.autoDeleteAfter;
+        }
+      }
+
+      warrantyStart     = extracted.warrantyStart     || null;
+      warrantyExpiresAt = extracted.warrantyExpiresAt || null;
+      autoDeleteAfter   = extracted.autoDeleteAfter   || null;
+    }
+
+    // Read file as base64 for local storage
+    const fileDataBase64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const newId = crypto.randomUUID();
+
+    // Save to IndexedDB (local cache)
+    await saveFileToDB(newId, fileDataBase64);
+
+    // Upload to Firebase Storage + Firestore
+    let cloudDoc = null;
+    if (isFirebaseAvailable()) {
+      try {
+        cloudDoc = await uploadDocumentWithStorage(file, {
+          title: fileName,
+          category: guessedCategory,
+          year: new Date().getFullYear().toString(),
+          org: "",
+          recipient: [],
+          warrantyStart,
+          warrantyExpiresAt,
+          autoDeleteAfter
+        });
+        
+        // Use the cloud doc data
+        if (cloudDoc && cloudDoc.id) {
+          // Update local doc with cloud info
+          const newDoc = {
+            id: newId,
+            ...cloudDoc,
+            title: fileName,
+            originalFileName: fileName,
+            mimeType: file.type,
+            hasFile: true
+          };
+          
+          allDocsData.push(newDoc);
+          setUserDocs(userNow, allDocsData, allUsersData);
+          
+          showNotification(`✅ הקובץ נוסף לתיקייה "${guessedCategory}" ושמור בענן`);
+        }
+        
+      } catch (e) {
+        console.error("Cloud upload failed, saving locally only:", e);
+        
+        // Fallback: save locally only
+        const newDoc = {
+          id: newId,
+          title: fileName,
+          originalFileName: fileName,
+          category: guessedCategory,
+          uploadedAt: new Date().toISOString().split("T")[0],
+          year: new Date().getFullYear().toString(),
+          org: "",
+          recipient: [],
+          sharedWith: [],
+          warrantyStart,
+          warrantyExpiresAt,
+          autoDeleteAfter,
+          mimeType: file.type,
+          hasFile: true,
+          downloadURL: null
+        };
+        
+        allDocsData.push(newDoc);
+        setUserDocs(userNow, allDocsData, allUsersData);
+        
+        showNotification(`⚠️ נשמר במכשיר בלבד (ללא סינכרון ענן)`, true);
+      }
+    } else {
+      // No Firebase - local only
+      const newDoc = {
+        id: newId,
+        title: fileName,
+        originalFileName: fileName,
+        category: guessedCategory,
+        uploadedAt: new Date().toISOString().split("T")[0],
+        year: new Date().getFullYear().toString(),
+        org: "",
+        recipient: [],
+        sharedWith: [],
+        warrantyStart,
+        warrantyExpiresAt,
+        autoDeleteAfter,
+        mimeType: file.type,
+        hasFile: true,
+        downloadURL: null
+      };
+      
+      allDocsData.push(newDoc);
+      setUserDocs(userNow, allDocsData, allUsersData);
+      
+      showNotification(`✅ הקובץ נוסף לתיקייה "${guessedCategory}"`);
+    }
+
+    // Refresh UI
+    const currentCat = categoryTitle.textContent;
+    if (currentCat === "אחסון משותף") {
+      openSharedView();
+    } else if (currentCat === "סל מחזור") {
+      openRecycleView();
+    } else if (!homeView.classList.contains("hidden")) {
+      renderHome();
+    } else {
+      openCategoryView(currentCat);
+    }
+
+    fileInput.value = "";
+
+  } catch (err) {
+    console.error("שגיאה בהעלאה:", err);
+    showNotification("הייתה בעיה בהעלאה. נסה שוב או קובץ אחר.", true);
+    hideLoading();
+  }
+});
+
+
+
+// 3. Updated file upload handler (replace in your DOMContentLoaded)
+// Replace your existing fileInput.addEventListener("change", ...) with this:
+
+
+
+function handleLogout() {
+  // Stop any active listeners
+  try { if (stopWatching) stopWatching(); } catch(_) {}
+  try { if (window._stopMembersWatch) window._stopMembersWatch(); } catch(_) {}
+  try { if (window._stopSharedDocsWatch) window._stopSharedDocsWatch(); } catch(_) {}
+
+  // Clear session keys used by auth & home
+  sessionStorage.removeItem("docArchiveCurrentUser"); // <-- important
+  sessionStorage.removeItem("loginSuccess");          // <-- important
+  sessionStorage.removeItem("docArchiveUsers");       // (optional: local cache)
+
+  // Clear local data + UI caches
+  try { allDocsData = []; } catch(_) {}
+
+  // Go to login
+  window.location.replace("./forms/eco-wellness/index.html");
+}
+
+
+
+
+
+
+async function syncAllLocalDocsToCloud() {
+  if (!isFirebaseAvailable()) {
+    showNotification("Firebase לא זמין", true);
+    return;
+  }
+  
+  showLoading("מסנכרן מסמכים לענן...");
+  
+  let synced = 0;
+  let failed = 0;
+  
+  for (const doc of allDocsData) {
+    if (doc._trashed) continue;
+    
+    // Check if already has downloadURL
+    if (doc.downloadURL) {
+      synced++;
+      continue;
+    }
+    
+    // Try to get file from IndexedDB
+    const dataUrl = await loadFileFromDB(doc.id).catch(() => null);
+    if (!dataUrl) {
+      console.warn(`No file data for doc ${doc.id}`);
+      failed++;
+      continue;
+    }
+    
+    // Convert dataURL to Blob
+    try {
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      
+      // Create File object
+      const file = new File(
+        [blob], 
+        doc.originalFileName || doc.fileName || "file", 
+        { type: doc.mimeType || "application/octet-stream" }
+      );
+      
+      // Upload to Storage
+      const currentUser = normalizeEmail(getCurrentUserEmail() || userNow);
+      const storageRef = window.fs.ref(
+        window.storage, 
+        `documents/${currentUser}/${doc.id}_${file.name}`
+      );
+      
+      const snapshot = await window.fs.uploadBytes(storageRef, file);
+      const downloadURL = await window.fs.getDownloadURL(snapshot.ref);
+      
+      // Update Firestore
+      const docRef = window.fs.doc(window.db, "documents", doc.id);
+      await window.fs.updateDoc(docRef, { downloadURL });
+      
+      // Update local
+      doc.downloadURL = downloadURL;
+      synced++;
+      
+      console.log(`✅ Synced doc ${doc.id}`);
+      
+    } catch (e) {
+      console.error(`❌ Failed to sync doc ${doc.id}:`, e);
+      failed++;
+    }
+  }
+  
+  setUserDocs(userNow, allDocsData, allUsersData);
+  hideLoading();
+  
+  showNotification(`✅ ס×•× ×›×¨× ×• ${synced} ×ž×¡×ž×›×™×${failed > 0 ? `, ${failed} × ×›×©×œ×•` : ''}`);
+}
+
+// Make functions globally accessible
+window.syncAllLocalDocsToCloud = syncAllLocalDocsToCloud;
+window.handleLogout = handleLogout;
+
+console.log("✅ Enhanced Firebase persistence loaded");
+
+
+
 
 
 
@@ -330,13 +1141,7 @@ async function sendShareInviteToFirestore(fromEmail, toEmail, folderId, folderNa
 // קבלת הזמנות ממתינות למשתמש (Firestore)
 async function getPendingInvitesFromFirestore(userEmail) {
   const allUsers = loadAllUsersDataFromStorage();
-  const currentUserKey = getCurrentUser(); // מה-LocalStorage
-  const currentUserObj = allUsers[currentUserKey] || {};
-
-  // תמיד אימייל מנורמל של המשתמש המחובר, אלא אם הועבר userEmail מפורש
-  const myEmail = normalizeEmail(
-    userEmail || currentUserObj.email || currentUserKey || ""
-  );
+ const myEmail = normalizeEmail(userEmail || getCurrentUserEmail() || "");
 
   if (!isFirebaseAvailable()) {
     console.warn("Firebase לא זמין, בודק ב-localStorage");
@@ -364,7 +1169,15 @@ async function getPendingInvitesFromFirestore(userEmail) {
 }
 
 
-let stopWatching = null;
+// At the very top of main.
+
+// Later, just reassign it — never redeclare
+if (stopWatching) stopWatching();
+stopWatching = watchPendingInvites(async (invites) => {
+  console.log("🔔 Real-time update:", invites.length, "invites");
+  paintPending(invites);
+});
+
 
 function watchPendingInvites(onChange) {
   const allUsers = loadAllUsersDataFromStorage();
@@ -571,6 +1384,35 @@ async function syncMySharedDocsToFirestore() {
 
 
 
+
+
+async function migrateLocalDocsToDocuments() {
+  if (!isFirebaseAvailable()) { console.warn("Firebase unavailable"); return; }
+  const me = normalizeEmail(getCurrentUserEmail());
+  let pushed = 0;
+  for (const d of allDocsData) {
+    if (!d || d._trashed) continue;
+    const ref = window.fs.doc(window.db, "documents", d.id || crypto.randomUUID());
+    await window.fs.setDoc(ref, { ...d, owner: me }, { merge: true });
+    pushed++;
+  }
+  console.log("Migrated", pushed, "docs");
+}
+
+
+window.isFirebaseAvailable = function () {
+  try { return !!(window.db && window.fs && typeof window.fs.getDoc === "function"); }
+  catch { return false; }
+};
+
+
+
+
+
+
+
+
+
 /*************************
  * 1. קטגוריות / מילות מפתח
  *************************/
@@ -671,42 +1513,6 @@ const CATEGORIES = [
 
 /*********************
  * 2. LocalStorage   *
- *********************/
-
-const STORAGE_KEY = "docArchiveUsers";
-const CURRENT_USER_KEY = "docArchiveCurrentUser";
-
-function loadAllUsersDataFromStorage() {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
-  } catch (e) {
-    console.error("Couldn't parse storage", e);
-    return {};
-  }
-}
-
-function saveAllUsersDataToStorage(allUsersData) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(allUsersData));
-}
-
-function getCurrentUser() {
-  return sessionStorage.getItem(CURRENT_USER_KEY);
-}
-
-function getUserDocs(username, allUsersData) {
-  return allUsersData[username]?.docs || [];
-}
-
-function setUserDocs(username, docsArray, allUsersData) {
-  if (!allUsersData[username]) {
-    allUsersData[username] = { password: "", docs: [] };
-  }
-  allUsersData[username].docs = docsArray;
-  saveAllUsersDataToStorage(allUsersData);
-}
-
 /*********************
  * 3. Utilities      *
  *********************/
@@ -1136,9 +1942,6 @@ function sortDocs(docsArray) {
 }
 
 
-function normalizeEmail(e) { 
-  return (e || "").trim().toLowerCase(); 
-}
 
 function findUsernameByEmail(allUsersData, email) {
   const target = normalizeEmail(email);
@@ -1266,7 +2069,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   let allUsersData = loadAllUsersDataFromStorage();
   let allDocsData  = getUserDocs(userNow, allUsersData);
 
-function normalizeEmail(e) { return (e || "").trim().toLowerCase(); }
 
   // === INIT shared fields (run once after loading allUsersData/allDocsData) ===
 function ensureUserSharedFields(allUsersData, username) {
@@ -2376,6 +3178,28 @@ renderPending();
 allDocsData.push(newDoc);
 setUserDocs(userNow, allDocsData, allUsersData);
 
+
+// === Mirror to Firestore (owner document) ===
+if (isFirebaseAvailable()) {
+  try {
+    const ownerEmail = normalizeEmail(getCurrentUserEmail() || userNow);
+    const docRef = window.fs.doc(window.db, "documents", newId);
+
+    // Write metadata only (do NOT store the base64)
+    await window.fs.setDoc(docRef, {
+      ...newDoc,
+      owner: ownerEmail,
+      // make sure we don't accidentally write any large dataURL fields
+      fileDataBase64: undefined
+    }, { merge: true });
+
+    console.log("✅ Mirrored owner doc to Firestore:", newId);
+  } catch (e) {
+    console.error("❌ Firestore mirror failed:", e);
+  }
+}
+
+
 // If this doc is in a shared folder, sync to Firestore immediately
 if (newDoc.sharedFolderId && isFirebaseAvailable()) {
   console.log("🔄 New doc has sharedFolderId, syncing to Firestore...");
@@ -2449,6 +3273,14 @@ if (currentCat === "אחסון משותף") {
     a.remove();
   });
 
-  // להתחיל בדף הבית
-  renderHome();
+document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    if (typeof bootFromCloud === "function") {
+      await bootFromCloud();
+    }
+  } catch (e) {
+    console.error("Failed to boot from cloud:", e);
+  }
+});
+
 });

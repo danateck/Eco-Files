@@ -2024,30 +2024,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   </script>
 
-<script>
-        // Add this at the bottom
-        // Require user to be logged in to view this page
-        requireLogin();
-        
-        // Now you can get the logged in user
-        
-    </script>
-
-<!-- Import map for bare imports used by firebase-config.js -->
+<!-- Import map for bare ESM imports -->
+<!-- Import map MUST include storage too -->
 <script type="importmap">
 {
   "imports": {
     "firebase/app": "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js",
+    "firebase/storage": "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js"
   }
 }
 </script>
 
-<!-- Initialize Firebase (v10 ESM) and expose window.db / window.fs -->
-<script type="module" src="firebase-config.js"></script>
+<!-- Initialize Firebase and expose globals -->
+<script type="module" src="./firebase-config.js"></script>
 
-<!-- Your app AFTER Firebase globals exist -->
-<script src="./JS/main.js"></script>
+<!-- Your app — runs after firebase-config creates window.app/db/fs -->
+<script type="module" src="./JS/main.js"></script>
 
 
 </body>
