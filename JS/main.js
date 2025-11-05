@@ -701,10 +701,11 @@ fileInput.addEventListener("change", async () => {
 
     // Upload to Firebase Storage + Firestore
     // Upload to Firebase Storage + Firestore
+    // Upload to Firebase Storage + Firestore
     let cloudDoc = null;
     if (isFirebaseAvailable()) {
       try {
-        showLoading("משמר בענן...");
+        showLoading("שומר בענן...");
         
         // Upload using the proper uploadDocument function
         cloudDoc = await uploadDocument(file, {
@@ -722,7 +723,6 @@ fileInput.addEventListener("change", async () => {
         
         // Use the cloud doc data
         if (cloudDoc && cloudDoc.id) {
-          // Update local doc with cloud info
           const newDoc = {
             id: cloudDoc.id,
             ...cloudDoc,
@@ -735,11 +735,14 @@ fileInput.addEventListener("change", async () => {
           allDocsData.push(newDoc);
           setUserDocs(userNow, allDocsData, allUsersData);
           
-          showNotification(`✅ הקובץ נוסף לתיקייה "${guessedCategory}" ושמור בענן`);
+          showNotification(`✅ הקובץ נוסף לתיקייה "${guessedCategory}" ונשמר`);
         }
+        
+        hideLoading(); // ← Make sure to hide loading here!
         
       } catch (e) {
         console.error("❌ Cloud upload failed:", e);
+        hideLoading(); // ← And here!
         
         // Fallback: save locally only
         const newDoc = {
@@ -764,9 +767,7 @@ fileInput.addEventListener("change", async () => {
         allDocsData.push(newDoc);
         setUserDocs(userNow, allDocsData, allUsersData);
         
-        showNotification(`⚠️ נשמר במכשיר בלבד (ללא סינכרון ענן)`, true);
-      } finally {
-        hideLoading();
+        showNotification(`✅ נשמר במכשיר (ללא ענן)`);
       }
     } else {
       // No Firebase - local only
@@ -794,7 +795,6 @@ fileInput.addEventListener("change", async () => {
       
       showNotification(`✅ הקובץ נוסף לתיקייה "${guessedCategory}"`);
     }
-
     // Refresh UI
     const currentCat = categoryTitle.textContent;
     if (currentCat === "אחסון משותף") {
