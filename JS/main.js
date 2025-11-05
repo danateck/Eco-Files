@@ -158,8 +158,17 @@ function isFirebaseAvailable() {
 // v9 modular version
 async function loadDocuments() {
   const me = getCurrentUserEmail();
-  if (!me) return [];                 // not logged in yet
-  if (!isFirebaseAvailable()) return []; // no cloud, nothing to load
+  console.log("📥 loadDocuments called for:", me);
+  
+  if (!me) {
+    console.warn("❌ No user email, cannot load documents");
+    return [];
+  }
+  
+  if (!isFirebaseAvailable()) {
+    console.warn("❌ Firebase unavailable, cannot load documents");
+    return [];
+  }
 
   const col = window.fs.collection(window.db, "documents");
   const qOwned  = window.fs.query(col, window.fs.where("owner", "==", me));
@@ -171,12 +180,24 @@ async function loadDocuments() {
   ]);
 
   const map = new Map();
-  ownedSnap.forEach(d => map.set(d.id, { id: d.id, ...d.data() }));
-  sharedSnap.forEach(d => { if (!map.has(d.id)) map.set(d.id, { id: d.id, ...d.data() }); });
+  ownedSnap.forEach(d => {
+    const data = { id: d.id, ...d.data() };
+    console.log("📄 Owned document:", data.title || data.fileName, "ID:", d.id);
+    map.set(d.id, data);
+  });
+  
+  sharedSnap.forEach(d => { 
+    if (!map.has(d.id)) {
+      const data = { id: d.id, ...d.data() };
+      console.log("📄 Shared document:", data.title || data.fileName, "ID:", d.id);
+      map.set(d.id, data);
+    }
+  });
 
-  return Array.from(map.values());
+  const result = Array.from(map.values());
+  console.log("✅ Total documents loaded:", result.length);
+  return result;
 }
-
 
 // ============================================
 // FIX 2: Upload document with owner info
@@ -185,7 +206,13 @@ async function uploadDocument(file, metadata = {}) {
   // ✅ who is the owner
   const raw = getCurrentUserEmail();
   const currentUser = raw ? normalizeEmail(raw) : null;
-  if (!currentUser) throw new Error("User not logged in");
+  
+  console.log("📤 Uploading document for user:", currentUser);
+  
+  if (!currentUser) {
+    console.error("❌ No current user for upload");
+    throw new Error("User not logged in");
+  }
 
   // ✅ stable doc id used by both UI & Firestore
   const newId = crypto.randomUUID();
@@ -209,9 +236,10 @@ async function uploadDocument(file, metadata = {}) {
       );
       const snap = await window.fs.uploadBytes(storageRef, file);
       downloadURL = await window.fs.getDownloadURL(snap.ref);
+      console.log("✅ File uploaded to Storage:", downloadURL);
     }
   } catch (e) {
-    console.warn("Storage upload skipped/failed:", e);
+    console.warn("⚠️ Storage upload skipped/failed:", e);
   }
 
   const docRef = window.fs.doc(window.db, "documents", newId);
@@ -249,6 +277,8 @@ async function uploadDocument(file, metadata = {}) {
   };
 
   await window.fs.setDoc(docRef, docData, { merge: true });
+  console.log("✅ Document metadata saved to Firestore:", newId);
+  
   return { id: newId, ...docData };
 }
 
@@ -307,26 +337,42 @@ function watchMyDocs() {
 
 async function bootFromCloud() {
   const me = getCurrentUserEmail();
-  if (!me || !isFirebaseAvailable()) return;
+  console.log("🚀 bootFromCloud called for:", me);
+  
+  if (!me || !isFirebaseAvailable()) {
+    console.warn("❌ Cannot boot from cloud: no user or Firebase unavailable");
+    return;
+  }
 
   try {
     if (typeof showLoading === "function") showLoading("טוען מסמכים מהענן...");
+    
+    // Load documents from Firestore
     const docs = await loadDocuments();
-    // Save into your app globals (these exist in your project)
+    console.log("📦 Loaded", docs.length, "documents from Firestore for", me);
+    
+    // IMPORTANT: Replace allDocsData completely with cloud data
+    // This ensures each user sees only their documents
     allDocsData = docs || [];
+    
+    // Update the user's local cache
     if (typeof setUserDocs === "function" && typeof allUsersData !== "undefined" && typeof userNow !== "undefined") {
       setUserDocs(userNow, allDocsData, allUsersData);
     }
+    
+    // Render the home view
     if (typeof renderHome === "function") renderHome();
+    
+    console.log("✅ Boot from cloud complete:", allDocsData.length, "documents loaded");
+  } catch (error) {
+    console.error("❌ Boot from cloud failed:", error);
   } finally {
     if (typeof hideLoading === "function") hideLoading();
   }
 
-  // start live updates
+  // Start live updates
   watchMyDocs();
 }
-
-
 
 
 // ============================================
@@ -642,10 +688,14 @@ fileInput.addEventListener("change", async () => {
     await saveFileToDB(newId, fileDataBase64);
 
     // Upload to Firebase Storage + Firestore
+    // Upload to Firebase Storage + Firestore
     let cloudDoc = null;
     if (isFirebaseAvailable()) {
       try {
-        cloudDoc = await uploadDocumentWithStorage(file, {
+        showLoading("משמר בענן...");
+        
+        // Upload using the proper uploadDocument function
+        cloudDoc = await uploadDocument(file, {
           title: fileName,
           category: guessedCategory,
           year: new Date().getFullYear().toString(),
@@ -656,11 +706,13 @@ fileInput.addEventListener("change", async () => {
           autoDeleteAfter
         });
         
+        console.log("✅ Cloud upload successful:", cloudDoc);
+        
         // Use the cloud doc data
         if (cloudDoc && cloudDoc.id) {
           // Update local doc with cloud info
           const newDoc = {
-            id: newId,
+            id: cloudDoc.id,
             ...cloudDoc,
             title: fileName,
             originalFileName: fileName,
@@ -675,7 +727,7 @@ fileInput.addEventListener("change", async () => {
         }
         
       } catch (e) {
-        console.error("Cloud upload failed, saving locally only:", e);
+        console.error("❌ Cloud upload failed:", e);
         
         // Fallback: save locally only
         const newDoc = {
@@ -693,13 +745,16 @@ fileInput.addEventListener("change", async () => {
           autoDeleteAfter,
           mimeType: file.type,
           hasFile: true,
-          downloadURL: null
+          downloadURL: null,
+          owner: normalizeEmail(getCurrentUserEmail())
         };
         
         allDocsData.push(newDoc);
         setUserDocs(userNow, allDocsData, allUsersData);
         
         showNotification(`⚠️ נשמר במכשיר בלבד (ללא סינכרון ענן)`, true);
+      } finally {
+        hideLoading();
       }
     } else {
       // No Firebase - local only
@@ -718,7 +773,8 @@ fileInput.addEventListener("change", async () => {
         autoDeleteAfter,
         mimeType: file.type,
         hasFile: true,
-        downloadURL: null
+        downloadURL: null,
+        owner: normalizeEmail(getCurrentUserEmail())
       };
       
       allDocsData.push(newDoc);
@@ -756,23 +812,30 @@ fileInput.addEventListener("change", async () => {
 
 
 function handleLogout() {
+  console.log("🚪 Logging out...");
+  
   // Stop any active listeners
   try { if (stopWatching) stopWatching(); } catch(_) {}
   try { if (window._stopMembersWatch) window._stopMembersWatch(); } catch(_) {}
   try { if (window._stopSharedDocsWatch) window._stopSharedDocsWatch(); } catch(_) {}
 
   // Clear session keys used by auth & home
-  sessionStorage.removeItem("docArchiveCurrentUser"); // <-- important
-  sessionStorage.removeItem("loginSuccess");          // <-- important
-  sessionStorage.removeItem("docArchiveUsers");       // (optional: local cache)
+  sessionStorage.removeItem("docArchiveCurrentUser");
+  sessionStorage.removeItem("loginSuccess");
+  sessionStorage.removeItem("docArchiveUsers");
 
   // Clear local data + UI caches
-  try { allDocsData = []; } catch(_) {}
+  try { 
+    allDocsData = [];
+    // Force a complete reset of the memory cache
+    Object.keys(memoryUsers).forEach(key => delete memoryUsers[key]);
+  } catch(_) {}
 
+  console.log("✅ Logout complete, redirecting to login...");
+  
   // Go to login
   window.location.replace("./forms/eco-wellness/index.html");
 }
-
 
 
 
@@ -2088,6 +2151,30 @@ function ensureUserSharedFields(allUsersData, username) {
 }
 
 
+
+
+ ensureUserSharedFields(allUsersData, userNow);
+  saveAllUsersDataToStorage(allUsersData);
+          
+  if (!allDocsData || allDocsData.length === 0) {
+    allDocsData = [];
+    setUserDocs(userNow, allDocsData, allUsersData);
+  }
+
+  console.log("📊 Initial local data:", allDocsData.length, "documents");
+  
+  // ✅ Boot from cloud immediately after page load
+  (async () => {
+    try {
+      await bootFromCloud();
+    } catch (e) {
+      console.error("❌ Failed to boot from cloud:", e);
+    }
+  })();
+
+
+
+  
 function findUsernameByEmail(allUsersData, email) {
   const target = (email || "").trim().toLowerCase();
   for (const [uname, u] of Object.entries(allUsersData)) {
